@@ -6,7 +6,7 @@ if [ ! -d /var/vmail/backup ]; then
     cd / && tar jxf /root/vmail.tar.bz2
     rm /root/vmail.tar.bz2
 fi
-exit 0
+
 FILES="localtime services resolv.conf hosts"
 for file in $FILES; do
     cp /etc/${file} /var/spool/postfix/etc/${file}
