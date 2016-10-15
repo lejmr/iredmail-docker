@@ -1,0 +1,93 @@
+#!/usr/bin/env ruby
+
+config_path = File.join(File.dirname(__FILE__), 'build/config')
+
+if File.exists?(config_path)
+  print 'Overwrite existing iRedMail config file (y/N): '
+  exit if $stdin.gets.strip.downcase != 'y'
+end
+
+print 'Enter dn2dnsname (local): '
+dn2dnsname = $stdin.gets.strip
+if dn2dnsname.empty?
+  dn2dnsname = 'local'
+end
+
+begin
+  print 'Enter first domain: '
+  first_domain = $stdin.gets.strip
+end while first_domain.empty?
+
+begin
+  print 'Enter LDAP root password: '
+  ldap_root_password = $stdin.gets.strip
+end while ldap_root_password.empty?
+
+begin
+  print 'Enter MYSQL root password: '
+  mysql_root_password = $stdin.gets.strip
+end while mysql_root_password.empty?
+
+begin
+  print 'Enter postmaster password: '
+  postmaster_password = $stdin.gets.strip
+end while postmaster_password.empty?
+
+PASSWORD_CHARS = ('A'..'Z').to_a + ('a'..'z').to_a + (0..9).to_a
+
+File.open(config_path, 'w') do |f|
+  f << <<EOF
+export VMAIL_USER_HOME_DIR='/var/vmail'
+export STORAGE_BASE_DIR='/var/vmail'
+export STORAGE_MAILBOX_DIR='/var/vmail/vmail1'
+export SIEVE_DIR='/var/vmail/sieve'
+export BACKUP_DIR='/var/vmail/backup'
+export BACKUP_SCRIPT_LDAP='/var/vmail/backup/backup_ldapd.sh'
+export BACKUP_SCRIPT_MYSQL='/var/vmail/backup/backup_mysql.sh'
+export BACKUP_SCRIPT_PGSQL='/var/vmail/backup/backup_pgsql.sh'
+export WEB_SERVER_IS_NGINX='YES'
+export WEB_SERVER_IS_APACHE='NO'
+export BACKEND_ORIG='MYSQL'
+export BACKEND='MYSQL'
+export VMAIL_DB_BIND_PASSWD='#{(0...30).map { PASSWORD_CHARS.sample }.join}'
+export VMAIL_DB_ADMIN_PASSWD='#{(0...30).map { PASSWORD_CHARS.sample }.join}'
+export LDAP_BINDPW='#{(0...30).map { PASSWORD_CHARS.sample }.join}'
+export LDAP_ADMIN_PW='#{(0...30).map { PASSWORD_CHARS.sample }.join}'
+export LDAP_ROOTPW='#{ldap_root_password}'
+export MYSQL_ROOT_USER='root'
+export MYSQL_ROOT_PASSWD='#{mysql_root_password}'
+export DEFAULT_PASSWORD_SCHEME='SSHA'
+export dn2dnsname="#{dn2dnsname}"
+export LDAP_SUFFIX="dc=#{dn2dnsname}"
+export LDAP_SUFFIX_MAJOR="#{dn2dnsname}"
+export LDAP_BINDDN="cn=vmail,dc=#{dn2dnsname}"
+export LDAP_ADMIN_DN="cn=vmailadmin,dc=#{dn2dnsname}"
+export LDAP_ROOTDN="cn=Manager,dc=#{dn2dnsname}"
+export LDAP_BASEDN_NAME="domains"
+export LDAP_BASEDN="o=domains,dc=#{dn2dnsname}"
+export LDAP_ADMIN_BASEDN="o=domainAdmins,dc=#{dn2dnsname}"
+export SQL_SERVER_ADDRESS='127.0.0.1'
+export SQL_SERVER_PORT='3306'
+export FIRST_DOMAIN='#{first_domain}'
+export DOMAIN_ADMIN_NAME='postmaster'
+export SITE_ADMIN_NAME='postmaster@#{first_domain}'
+export DOMAIN_ADMIN_PASSWD_PLAIN='#{postmaster_password}'
+export DOMAIN_ADMIN_PASSWD='#{postmaster_password}'
+export SITE_ADMIN_PASSWD='#{postmaster_password}'
+export FIRST_USER='postmaster'
+export FIRST_USER_PASSWD='#{postmaster_password}'
+export FIRST_USER_PASSWD_PLAIN='#{postmaster_password}'
+export ENABLE_DKIM='YES'
+export USE_IREDADMIN='YES'
+export USE_RCM='YES'
+export USE_AWSTATS='YES'
+export USE_FAIL2BAN='YES'
+export AMAVISD_DB_PASSWD='#{(0...30).map { PASSWORD_CHARS.sample }.join}'
+export IREDADMIN_DB_PASSWD='#{(0...30).map { PASSWORD_CHARS.sample }.join}'
+export RCM_DB_PASSWD='#{(0...30).map { PASSWORD_CHARS.sample }.join}'
+export SOGO_DB_PASSWD='#{(0...30).map { PASSWORD_CHARS.sample }.join}'
+export SOGO_SIEVE_MASTER_PASSWD='#{(0...30).map { PASSWORD_CHARS.sample }.join}'
+export IREDAPD_DB_PASSWD='#{(0...30).map { PASSWORD_CHARS.sample }.join}'
+#EOF
+EOF
+end

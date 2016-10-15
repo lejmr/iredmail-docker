@@ -1,0 +1,12 @@
+#!/bin/bash
+FQDN=$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname | xargs echo -n)
+case "$*" in
+'-a'|'-A'|'-s')
+  cat /opt/hostname;;
+'-d')
+  cat /etc/mailname;;
+'-f'|'--fqdn'|'--long'|'-v')
+  echo $FQDN;;
+'-i')
+  echo "127.0.0.1";;
+esac

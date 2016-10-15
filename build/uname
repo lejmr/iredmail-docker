@@ -1,0 +1,3 @@
+#!/bin/bash
+FQDN=$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname | xargs echo -n)
+/bin/uname_ $* | sed s/$(/bin/hostname_)/$FQDN/g
