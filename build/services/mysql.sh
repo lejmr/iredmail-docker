@@ -35,11 +35,17 @@ if [ ! -d /var/lib/mysql/mysql ]; then
             tmp=$(tempfile)
             mysqldump -u root -p${MYSQL_ROOT_PASSWORD} vmail mailbox alias domain domain_admins -r $tmp
             sed -i "s/DOMAIN/${DOMAIN}/g" $tmp
+            
+            # Update default email accounts
+            if [ ! -z ${POSTMASTER_PASSWORD} ]; then 
+                echo "(postmaster password) "
+                echo "UPDATE mailbox SET password='${POSTMASTER_PASSWORD}' WHERE username='postmaster@${DOMAIN}';" >> $tmp
+            fi
+            
             mysql -u root -p${MYSQL_ROOT_PASSWORD} vmail < $tmp > /dev/null 2>&1
             rm $tmp
         fi
-    
-    
+
         # Stop this instance
         killall -s TERM mysqld
         echo "done."
