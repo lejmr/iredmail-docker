@@ -1,12 +1,22 @@
 FROM phusion/baseimage:0.9.19
 MAINTAINER Miloš Kozák <milos.kozak@lejmr.com>
 
-ENV MYSQL_ROOT_PASSWD="heslo"
-ENV IREDMAIL_VERSION 0.9.5-1
-ARG DOMAIN=lejmr.com
-ARG HOSTNAME=mail
+# Suporting software versions
+ARG IREDMAIL_VERSION=0.9.5-1
+#ARG ADMINER_VERSION=4.2.5
+
+# Default values changable at startup
+ARG DOMAIN=DOMAIN
+ARG HOSTNAME=HOSTNAME
 ARG TIMEZONE=Europe/Prague
 ARG SOGO_WORKERS=2
+
+#
+#  Chci mit moznst mennit TZ argumeten image pri spusteni
+#
+
+# TODO: Vypnout DEBUG u instalace iredmail
+
 
 ### Installation
 # Prerequisites
@@ -22,6 +32,7 @@ RUN apt-get -q update \
       wget \
       bzip2 \
       iptables \
+      openssl \
       mysql-server
 
 RUN echo $DOMAIN > /etc/mailname \
@@ -38,14 +49,17 @@ WORKDIR /opt/iredmail
 RUN wget -O - https://bitbucket.org/zhb/iredmail/downloads/iRedMail-"${IREDMAIL_VERSION}".tar.bz2 | \
     tar xvj --strip-components=1
 
-COPY ./config ./
+# Generate configuration file
+COPY ./config-gen /opt/iredmail/config-gen
+RUN sh ./config-gen $HOSTNAME $DOMAIN > ./config
 
+# Initiate automatic installation process 
 RUN sed s/$(hostname_)/$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname | xargs echo -n)/ /etc/hosts > /tmp/hosts_ \
     && cat /tmp/hosts_ > /etc/hosts \
     && rm /tmp/hosts_ \
     && echo $HOSTNAME > /etc/hostname \
     && sleep 5;service mysql start \
-    && IREDMAIL_DEBUG='NO' \
+    && IREDMAIL_DEBUG='YES' \
       CHECK_NEW_IREDMAIL='NO' \
       AUTO_USE_EXISTING_CONFIG_FILE=y \
       AUTO_INSTALL_WITHOUT_CONFIRM=y \
@@ -58,18 +72,21 @@ RUN sed s/$(hostname_)/$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname 
       bash iRedMail.sh
 
 ### Final configuration
-RUN sed -i 's/PREFORK=.*$'/PREFORK=$SOGO_WORKERS/ /etc/default/sogo \
+RUN . ./config \
+    && sed -i 's/PREFORK=.*$'/PREFORK=$SOGO_WORKERS/ /etc/default/sogo \
     && sed -i 's/WOWorkersCount.*$'/WOWorkersCount=$SOGO_WORKERS\;/ /etc/sogo/sogo.conf \
     && echo "[client]\nuser=root\npassword=${MYSQL_ROOT_PASSWD}" > /root/.my.cnf \
     && chmod 600 /root/.my.cnf \
     && sed -i '/^Foreground /c Foreground true' /etc/clamav/clamd.conf \
     && sed -i '/init.d/c pkill -sighup clamd' /etc/logrotate.d/clamav-daemon \
-    && sed -i '/^Foreground /c Foreground true' /etc/clamav/freshclam.conf
+    && sed -i '/^Foreground /c Foreground true' /etc/clamav/freshclam.conf \
+    && sed -i 's/^bind-address/#bind-address/' /etc/mysql/mysql.conf.d/mysqld.cnf
 
 # Prepare for the first run
-RUN ls -la /var/vmail/sieve/dovecot.sieve
 RUN tar jcf /root/mysql.tar.bz2 /var/lib/mysql && rm -rf /var/lib/mysql \
-    && tar jvcf /root/vmail.tar.bz2 /var/vmail && rm -rf /var/vmail
+    && tar jcf /root/vmail.tar.bz2 /var/vmail && rm -rf /var/vmail \
+    && tar jcf /root/clamav.tar.bz2 /var/lib/clamav && rm -rf /var/lib/clamav
+
 
 ### Startup services
 # Core Services
