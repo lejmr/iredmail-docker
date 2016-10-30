@@ -22,7 +22,7 @@ if [ ! -d /var/lib/mysql/mysql ]; then
             echo "CREATE USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';" >>/tmp/root.sql
             echo "GRANT ALL ON *.* TO 'root'@'%' WITH GRANT OPTION ;" >> /tmp/root.sql
             echo "FLUSH PRIVILEGES ;" >> /tmp/root.sql
-            mysql -u root -p$CP < /tmp/root.sql  > /dev/null 2>&1
+            mysql -u root -p$CP < /tmp/root.sql  #> /dev/null 2>&1
             rm /tmp/root.sql
         
             # Update my.cnf for root
@@ -42,7 +42,7 @@ if [ ! -d /var/lib/mysql/mysql ]; then
                 echo "UPDATE mailbox SET password='${POSTMASTER_PASSWORD}' WHERE username='postmaster@${DOMAIN}';" >> $tmp
             fi
             
-            mysql -u root -p${MYSQL_ROOT_PASSWORD} vmail < $tmp > /dev/null 2>&1
+            mysql -u root -p${MYSQL_ROOT_PASSWORD} vmail < $tmp # > /dev/null 2>&1
             rm $tmp
         fi
 
