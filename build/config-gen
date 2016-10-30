@@ -13,10 +13,10 @@ echo export WEB_SERVER_IS_NGINX='YES'
 echo export WEB_SERVER_IS_APACHE='NO'
 echo export BACKEND_ORIG='MYSQL'
 echo export BACKEND='MYSQL'
-echo export VMAIL_DB_BIND_PASSWD="$(openssl rand -base64 32)"
-echo export VMAIL_DB_ADMIN_PASSWD="$(openssl rand -base64 32)"
+echo export VMAIL_DB_BIND_PASSWD="$(openssl rand -hex 32)"
+echo export VMAIL_DB_ADMIN_PASSWD="$(openssl rand -hex 32)"
 echo export MYSQL_ROOT_USER='root'
-echo export MYSQL_ROOT_PASSWD="$(openssl rand -base64 32)"
+echo export MYSQL_ROOT_PASSWD="$(openssl rand -hex 32)"
 echo export DEFAULT_PASSWORD_SCHEME='SSHA'
 echo export dn2dnsname="$HOSTNAME.$DOMAIN"
 echo export SQL_SERVER_ADDRESS='127.0.0.1'
@@ -36,12 +36,12 @@ echo export USE_RCM='YES'
 echo export USE_AWSTATS='YES'
 echo export USE_FAIL2BAN='YES'
 echo export USE_SOGO='YES'
-echo export AMAVISD_DB_PASSWD="$(openssl rand -base64 32)"
-echo export IREDADMIN_DB_PASSWD="$(openssl rand -base64 32)"
-echo export RCM_DB_PASSWD="$(openssl rand -base64 32)"
-echo export SOGO_DB_PASSWD="$(openssl rand -base64 32)"
-echo export SOGO_SIEVE_MASTER_PASSWD="$(openssl rand -base64 32)"
-echo export IREDAPD_DB_PASSWD="$(openssl rand -base64 32)"
+echo export AMAVISD_DB_PASSWD="$(openssl rand -hex 32)"
+echo export IREDADMIN_DB_PASSWD="$(openssl rand -hex 32)"
+echo export RCM_DB_PASSWD="$(openssl rand -hex 32)"
+echo export SOGO_DB_PASSWD="$(openssl rand -hex 32)"
+echo export SOGO_SIEVE_MASTER_PASSWD="$(openssl rand -hex 32)"
+echo export IREDAPD_DB_PASSWD="$(openssl rand -hex 32)"
 # Mandatory end
 echo "#EOF"
 echo
