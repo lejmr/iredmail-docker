@@ -43,6 +43,7 @@ trap_term_signal() {
 trap "trap_hup_signal" HUP
 trap "trap_term_signal" TERM
 
+echo "*** Starting postfix.."
 /usr/lib/postfix/sbin/master -c /etc/postfix -d &
 pid=$!
 
