@@ -10,8 +10,10 @@ PIDFILE=/var/run/$NAME/$NAME.pid
 LOGFILE=/var/log/$NAME/$NAME.log
 
 # Overwrite prefork from attribut
-if [ $SOGO_WORKERS -ne $PREFORK ];
-    PREFORK=$SOGO_WORKERS
+if [ ! -z ${SOGO_WORKERS} ]; then
+    if [ $SOGO_WORKERS -ne $PREFORK ]; then
+        PREFORK=$SOGO_WORKERS
+    fi;
 fi;
 
 # Format options
