@@ -3,20 +3,13 @@ MAINTAINER Miloš Kozák <milos.kozak@lejmr.com>
 
 # Suporting software versions
 ARG IREDMAIL_VERSION=0.9.5-1
-#ARG ADMINER_VERSION=4.2.5
+ARG ADMINER_VERSION=4.2.5
 
 # Default values changable at startup
 ARG DOMAIN=DOMAIN
 ARG HOSTNAME=HOSTNAME
 ARG TIMEZONE=Europe/Prague
 ARG SOGO_WORKERS=2
-
-#
-#  Chci mit moznst mennit TZ argumeten image pri spusteni
-#
-
-# TODO: Vypnout DEBUG u instalace iredmail
-
 
 ### Installation
 # Prerequisites
@@ -59,7 +52,7 @@ RUN sed s/$(hostname_)/$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname 
     && rm /tmp/hosts_ \
     && echo $HOSTNAME > /etc/hostname \
     && sleep 5;service mysql start \
-    && IREDMAIL_DEBUG='YES' \
+    && IREDMAIL_DEBUG='NO' \
       CHECK_NEW_IREDMAIL='NO' \
       AUTO_USE_EXISTING_CONFIG_FILE=y \
       AUTO_INSTALL_WITHOUT_CONFIRM=y \
@@ -87,6 +80,8 @@ RUN tar jcf /root/mysql.tar.bz2 /var/lib/mysql && rm -rf /var/lib/mysql \
     && tar jcf /root/vmail.tar.bz2 /var/vmail && rm -rf /var/vmail \
     && tar jcf /root/clamav.tar.bz2 /var/lib/clamav && rm -rf /var/lib/clamav
 
+# Install Adminer
+RUN wget https://www.adminer.org/static/download/${ADMINER_VERSION}/adminer-${ADMINER_VERSION}.php -O /opt/www/roundcubemail/adminer.php
 
 ### Startup services
 # Core Services
