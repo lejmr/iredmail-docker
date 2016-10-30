@@ -5,6 +5,22 @@ if [ ! -d /var/vmail/backup ]; then
     echo "*** Creating vmail structure.."
     cd / && tar jxf /root/vmail.tar.bz2
     rm /root/vmail.tar.bz2
+    
+    if [ ! -z ${DOMAIN} ]; then 
+        sed -i "s/DOMAIN/${DOMAIN}/g" /etc/postfix/main.cf /etc/postfix/aliases        
+        mv /var/vmail/vmail1/DOMAIN /var/vmail/vmail1/$DOMAIN
+    fi
+    
+    if [ ! -z ${HOSTNAME} ]; then 
+        sed -i "s/HOSTNAME/${HOSTNAME}/g" /etc/postfix/main.cf
+    fi;
+    
+    if [ ! -z ${HOSTNAME} ] && [ ! -z ${DOMAIN} ]; then 
+        echo "127.0.0.1     ${HOSTNAME}.${DOMAIN}" >> /etc/hosts
+    fi
+    
+    # Update of local aliases
+    newaliases
 fi
 
 FILES="localtime services resolv.conf hosts"
