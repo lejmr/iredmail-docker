@@ -1,6 +1,34 @@
 # iRedMail Docker Container #
 
-## Disclaimer
+iRedMail allows to deploy an OPEN SOURCE, FULLY FLEDGED, FULL-FEATURED mail server in several minutes, for free. If several minutes is long time then this docker container can reduce help you and deploy your mail server in seconds.
 
+Current version of container uses MySQL for accounts saving. In the future the LDAP can be used, so pull requests are welcome. Container contains all components (Postfix, Dovecot, Fail2ban, ClamAV, Roundcube, and SoGo) and MySQL server. In order to customize container several environmental variables are allowed:
 
-This is a try on the way to create an iRedMail container which is in very docker way. However, running more processes in one container. 
+  * DOMAIN -  Primary domain which is used for iRedMail instalation (example.com)
+  * HOSTNAME - server name (mail, so FQDN will be mail.example.com)
+  * MYSQL_ROOT_PASSWORD - Root password for MySQL server installation
+  * POSTMASTER_PASSWORD - Initial password for postmaster@DOMAIN. Password can be generated according to [wiki](http://www.iredmail.org/docs/reset.user.password.html). ({PLAIN}password)
+  * TIMEZONE - Container timezone that is propagated to other components
+  * SOGO_WORKERS - Number of SOGo workers which can affect SOGo interface performance.
+  
+Container is prepared to handle data as persistent using mounted folders for data. Folders prepared for initialization are:PATH/
+
+ * /var/lib/mysql
+ * /var/vmail
+ * /var/lib/clamav
+
+With all information prepared, let's test your new iRedMail server:
+
+```
+docker run --privileged -p 80:80 -p 443:443 \
+           -e "DOMAIN=example.com" -e "HOSTNAME=mail" \
+           -e "MYSQL_ROOT_PASSWORD=password" \
+           -e "SOGO_WORKERS=1" \
+           -e "TIMEZONE=Europe/Prague" \
+           -e "POSTMASTER_PASSWORD={PLAIN}password" \
+           -v PATH/mysql:/var/lib/mysql \
+           -v PATH/vmail:/var/vmail \
+           -v PATH/clamav:/var/lib/clamav \
+           --name=iredmail iredmail:mysql-latest
+
+```
