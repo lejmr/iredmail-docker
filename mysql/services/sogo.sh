@@ -25,4 +25,10 @@ if [ ! -z ${TIMEZONE} ]; then
 fi
 
 
+# Update MySQL password
+. /opt/iredmail/.cv
+sed -i "s/TEMP_SOGO_DB_PASSWD/$SOGO_DB_PASSWD/" /etc/sogo/sogo.conf
+sed -i "s/TEMP_SOGO_SIEVE_MASTER_PASSWD/$SOGO_SIEVE_MASTER_PASSWD/" /etc/sogo/sieve.cred
+
+
 exec /sbin/setuser $NAME /usr/sbin/sogod -- $DAEMON_OPTS

@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# Update MySQL password
+. /opt/iredmail/.cv
+sed -i "s/TEMP_IREDADMIN_DB_PASSWD/$IREDADMIN_DB_PASSWD/" /opt/www/iredadmin/settings.py
+sed -i "s/TEMP_IREDAPD_DB_PASSWD/$IREDAPD_DB_PASSWD/" /opt/www/iredadmin/settings.py
+sed -i "s/TEMP_VMAIL_DB_ADMIN_PASSWD/$VMAIL_DB_ADMIN_PASSWD/" /opt/www/iredadmin/settings.py
+
 trap_hup_signal() {
     echo "Reloading (from SIGHUP)"
     /etc/init.d/uwsgi reload

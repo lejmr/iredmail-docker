@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# Update MySQL password
+. /opt/iredmail/.cv
+sed -i "s/TEMP_IREDAPD_DB_PASSWD/$IREDAPD_DB_PASSWD/" /opt/iredapd/settings.py
+sed -i "s/TEMP_VMAIL_DB_BIND_PASSWD/$VMAIL_DB_BIND_PASSWD/" /opt/iredapd/settings.py
+
 trap_term_signal() {
     echo "Stopping (from SIGTERM)"
     kill -15 $pid

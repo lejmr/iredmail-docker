@@ -40,6 +40,38 @@ trap_term_signal() {
     exit 0
 }
 
+# Update MySQL password
+. /opt/iredmail/.cv
+sed -i "s/TEMP_VMAIL_DB_BIND_PASSWD/$VMAIL_DB_BIND_PASSWD/" /etc/postfix/mysql/catchall_maps.cf \
+    /etc/postfix/mysql/domain_alias_maps.cf \
+    /etc/postfix/mysql/recipient_bcc_maps_domain.cf \
+    /etc/postfix/mysql/recipient_bcc_maps_user.cf \
+    /etc/postfix/mysql/relay_domains.cf \
+    /etc/postfix/mysql/sender_bcc_maps_domain.cf \
+    /etc/postfix/mysql/sender_bcc_maps_user.cf \
+    /etc/postfix/mysql/sender_dependent_relayhost_maps.cf \
+    /etc/postfix/mysql/sender_login_maps.cf \
+    /etc/postfix/mysql/transport_maps_domain.cf \
+    /etc/postfix/mysql/transport_maps_user.cf \
+    /etc/postfix/mysql/virtual_alias_maps.cf \
+    /etc/postfix/mysql/virtual_mailbox_domains.cf \
+    /etc/postfix/mysql/virtual_mailbox_maps.cf
+
+postmap /etc/postfix/mysql/catchall_maps.cf \
+    /etc/postfix/mysql/domain_alias_maps.cf \
+    /etc/postfix/mysql/recipient_bcc_maps_domain.cf \
+    /etc/postfix/mysql/recipient_bcc_maps_user.cf \
+    /etc/postfix/mysql/relay_domains.cf \
+    /etc/postfix/mysql/sender_bcc_maps_domain.cf \
+    /etc/postfix/mysql/sender_bcc_maps_user.cf \
+    /etc/postfix/mysql/sender_dependent_relayhost_maps.cf \
+    /etc/postfix/mysql/sender_login_maps.cf \
+    /etc/postfix/mysql/transport_maps_domain.cf \
+    /etc/postfix/mysql/transport_maps_user.cf \
+    /etc/postfix/mysql/virtual_alias_maps.cf \
+    /etc/postfix/mysql/virtual_mailbox_domains.cf \
+    /etc/postfix/mysql/virtual_mailbox_maps.cf
+
 trap "trap_hup_signal" HUP
 trap "trap_term_signal" TERM
 
