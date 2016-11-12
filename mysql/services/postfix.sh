@@ -55,7 +55,8 @@ sed -i "s/TEMP_VMAIL_DB_BIND_PASSWD/$VMAIL_DB_BIND_PASSWD/" /etc/postfix/mysql/c
     /etc/postfix/mysql/transport_maps_user.cf \
     /etc/postfix/mysql/virtual_alias_maps.cf \
     /etc/postfix/mysql/virtual_mailbox_domains.cf \
-    /etc/postfix/mysql/virtual_mailbox_maps.cf
+    /etc/postfix/mysql/virtual_mailbox_maps.cf \
+    /etc/postfix/mysql/domain_alias_catchall_maps.cf
 
 postmap /etc/postfix/mysql/catchall_maps.cf \
     /etc/postfix/mysql/domain_alias_maps.cf \
@@ -70,7 +71,8 @@ postmap /etc/postfix/mysql/catchall_maps.cf \
     /etc/postfix/mysql/transport_maps_user.cf \
     /etc/postfix/mysql/virtual_alias_maps.cf \
     /etc/postfix/mysql/virtual_mailbox_domains.cf \
-    /etc/postfix/mysql/virtual_mailbox_maps.cf
+    /etc/postfix/mysql/virtual_mailbox_maps.cf \
+    /etc/postfix/mysql/domain_alias_catchall_maps.cf
 
 trap "trap_hup_signal" HUP
 trap "trap_term_signal" TERM
