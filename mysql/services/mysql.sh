@@ -9,9 +9,12 @@ fi
 
 # Start database for changes
 exec /sbin/setuser mysql /usr/sbin/mysqld --skip-grant-tables &
-# TODO: better way for finding that process is running
-sleep 2
-
+echo "Waiting for MySQL is up"
+while ! mysqladmin ping -h localhost --silent; do
+    echo -n "."
+  sleep 1; 
+done
+echo
 
 # Update root password
 if [ ! -z ${MYSQL_ROOT_PASSWORD} ]; then 
