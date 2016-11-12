@@ -1,5 +1,14 @@
 #!/bin/sh
 
+if [ ! -z ${DOMAIN} ]; then 
+    sed -i "s/DOMAIN/${DOMAIN}/g" /etc/postfix/main.cf /etc/postfix/aliases
+fi
+
+if [ ! -z ${HOSTNAME} ]; then 
+    sed -i "s/HOSTNAME/${HOSTNAME}/g" /etc/postfix/main.cf
+fi;
+
+
 # Restore data in case of first run
 if [ ! -d /var/vmail/backup ]; then
     echo "*** Creating vmail structure.."
