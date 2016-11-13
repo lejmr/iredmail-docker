@@ -1,5 +1,17 @@
 #!/bin/sh
 
+### First wait until mysql starts
+# service users are configured
+while [ ! -f /var/tmp/mysql.run ]; do
+  sleep 1
+done
+# MySQL actually runs
+while ! mysqladmin ping -h localhost --silent; do
+  sleep 1; 
+done
+
+
+# Service startup
 if [ ! -z ${DOMAIN} ]; then 
     sed -i "s/DOMAIN/${DOMAIN}/g" /etc/postfix/main.cf /etc/postfix/aliases
     newaliases
@@ -88,6 +100,7 @@ trap "trap_hup_signal" HUP
 trap "trap_term_signal" TERM
 
 echo "*** Starting postfix.."
+touch /var/tmp/postfix.run
 /usr/lib/postfix/sbin/master -c /etc/postfix -d &
 pid=$!
 

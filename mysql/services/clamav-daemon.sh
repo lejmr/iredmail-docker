@@ -1,5 +1,9 @@
 #!/bin/sh
-# /var/lib/clamav/main.cvd
+# Wait until SOGo is started
+while ! nc -z localhost 20000; do   
+  sleep 1
+done
+sleep 3
 
 if [ ! -e /var/lib/clamav/main.cvd ]; then
    echo "*** Preparing ClamAV files.." 

@@ -80,4 +80,5 @@ echo "done."
 
     
 echo "*** Starting MySQL database.."
+touch /var/tmp/mysql.run
 exec /sbin/setuser mysql /usr/sbin/mysqld

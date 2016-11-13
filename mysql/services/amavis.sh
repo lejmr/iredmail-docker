@@ -1,5 +1,11 @@
 #!/bin/sh
 
+### Wait until postfix is started
+while [ ! -f /var/tmp/postfix.run ]; do
+  sleep 1
+done
+
+
 echo "*** Starting amavis.."
 if [ ! -z ${DOMAIN} ]; then 
     sed -i "s/DOMAIN/${DOMAIN}/g" /etc/amavis/conf.d/50-user

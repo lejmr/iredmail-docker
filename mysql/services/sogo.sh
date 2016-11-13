@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# Wait until Dovecot is started
+while ! nc -z localhost 993; do   
+  sleep 1
+done
+
 echo "*** Starting sogo..."
 
 . /etc/default/sogo

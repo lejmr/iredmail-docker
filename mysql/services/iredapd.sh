@@ -1,5 +1,10 @@
 #!/bin/sh
 
+### Wait until postfix is started
+while [ ! -f /var/tmp/postfix.run ]; do
+  sleep 1
+done
+
 # Update MySQL password
 . /opt/iredmail/.cv
 sed -i "s/TEMP_IREDAPD_DB_PASSWD/$IREDAPD_DB_PASSWD/" /opt/iredapd/settings.py
