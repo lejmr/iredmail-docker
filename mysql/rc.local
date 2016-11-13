@@ -11,7 +11,7 @@
 #
 # By default this script does nothing.
 
-echo VMAIL_DB_BIND_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
+echo VMAIL_DB_BIND_PASSWD="$(openssl rand -hex 32)" > /opt/iredmail/.cv
 echo VMAIL_DB_ADMIN_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
 echo AMAVISD_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
 echo IREDADMIN_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
