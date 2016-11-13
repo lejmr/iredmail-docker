@@ -2,6 +2,7 @@
 
 if [ ! -z ${DOMAIN} ]; then 
     sed -i "s/DOMAIN/${DOMAIN}/g" /etc/postfix/main.cf /etc/postfix/aliases
+    newaliases
 fi
 
 if [ ! -z ${HOSTNAME} ]; then 
