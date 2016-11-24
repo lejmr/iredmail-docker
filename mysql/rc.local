@@ -11,13 +11,15 @@
 #
 # By default this script does nothing.
 
-echo VMAIL_DB_BIND_PASSWD="$(openssl rand -hex 32)" > /opt/iredmail/.cv
-echo VMAIL_DB_ADMIN_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
-echo AMAVISD_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
-echo IREDADMIN_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
-echo RCM_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
-echo SOGO_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
-echo SOGO_SIEVE_MASTER_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
-echo IREDAPD_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
+if [ ! -e /opt/iredmail/.cv ]; then
+  echo VMAIL_DB_BIND_PASSWD="$(openssl rand -hex 32)" > /opt/iredmail/.cv
+  echo VMAIL_DB_ADMIN_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
+  echo AMAVISD_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
+  echo IREDADMIN_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
+  echo RCM_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
+  echo SOGO_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
+  echo SOGO_SIEVE_MASTER_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
+  echo IREDAPD_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
+fi
 
 exit 0
