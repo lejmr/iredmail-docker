@@ -103,10 +103,10 @@ ADD services/clamav-freshclam.sh /etc/service/clamav-freshclam/run
 
 
 ### Purge some packets and save disk space
-#RUN apt-get purge -y -q dialog apt-utils augeas-tools \
-#    && apt-get autoremove -y -q \
-#    && apt-get clean -y -q \
-#    && rm -rf /var/lib/apt/lists/*
+RUN apt-get purge -y -q dialog apt-utils augeas-tools \
+    && apt-get autoremove -y -q \
+    && apt-get clean -y -q \
+    && rm -rf /var/lib/apt/lists/*
 
 # Open Ports:
 # Apache: 80/tcp, 443/tcp Postfix: 25/tcp, 587/tcp
