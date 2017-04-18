@@ -2,8 +2,9 @@ FROM phusion/baseimage:latest
 MAINTAINER Miloš Kozák <milos.kozak@lejmr.com>
 
 # Suporting software versions
-ARG IREDMAIL_VERSION=0.9.5-1
-ARG ADMINER_VERSION=4.2.5
+ARG IREDMAIL_VERSION=0.9.6
+ARG ADMINER_VERSION=4.3.0
+#ARG ROUNDCUBE_VERSION=1.2.3
 
 # Default values changable at startup
 ARG DOMAIN=DOMAIN
@@ -79,7 +80,8 @@ RUN tar jcf /root/mysql.tar.bz2 /var/lib/mysql && rm -rf /var/lib/mysql \
     && tar jcf /root/clamav.tar.bz2 /var/lib/clamav && rm -rf /var/lib/clamav
 
 # Install Adminer
-RUN wget https://www.adminer.org/static/download/${ADMINER_VERSION}/adminer-${ADMINER_VERSION}.php -O /opt/www/roundcubemail/adminer.php
+#RUN wget https://www.adminer.org/static/download/${ADMINER_VERSION}/adminer-${ADMINER_VERSION}.php -O /opt/www/roundcubemail/adminer.php
+
 
 ### Startup services
 # Core Services
@@ -100,6 +102,12 @@ ADD services/nginx.sh /etc/service/httpd/run
 ADD services/fail2ban.sh /etc/service/fail2ban/run
 ADD services/clamav-daemon.sh /etc/service/clamav-daemon/run
 ADD services/clamav-freshclam.sh /etc/service/clamav-freshclam/run
+#ADD upgrades/processor.sh /etc/services/upgrades/run
+
+# Prepare infrastructure for persistent data upgrades
+RUN mkdir /upgrade/scripts -p 
+#ADD upgrades/mysql.sh /upgrades/scripts
+#ADD upgrades/mysql.sql /upgrades/scripts
 
 
 ### Purge some packets and save disk space
