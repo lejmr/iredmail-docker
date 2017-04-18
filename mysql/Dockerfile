@@ -80,7 +80,7 @@ RUN tar jcf /root/mysql.tar.bz2 /var/lib/mysql && rm -rf /var/lib/mysql \
     && tar jcf /root/clamav.tar.bz2 /var/lib/clamav && rm -rf /var/lib/clamav
 
 # Install Adminer
-#RUN wget https://www.adminer.org/static/download/${ADMINER_VERSION}/adminer-${ADMINER_VERSION}.php -O /opt/www/roundcubemail/adminer.php
+RUN wget https://www.adminer.org/static/download/${ADMINER_VERSION}/adminer-${ADMINER_VERSION}.php -O /opt/www/roundcubemail/adminer.php
 
 
 ### Startup services
@@ -105,7 +105,7 @@ ADD services/clamav-freshclam.sh /etc/service/clamav-freshclam/run
 #ADD upgrades/processor.sh /etc/services/upgrades/run
 
 # Prepare infrastructure for persistent data upgrades
-RUN mkdir /upgrade/scripts -p 
+#RUN mkdir /upgrade/scripts -p 
 #ADD upgrades/mysql.sh /upgrades/scripts
 #ADD upgrades/mysql.sql /upgrades/scripts
 
