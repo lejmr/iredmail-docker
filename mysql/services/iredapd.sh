@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# Configure plugins
+if [ ! -z "${IREDAPD_PLUGINS}" ]; then
+  echo "*** Configuring iredapd";
+  sed -i "/^plugins /c plugins = $IREDAPD_PLUGINS" /opt/iredapd/settings.py;
+fi
+
 ### Wait until postfix is started
 while [ ! -f /var/tmp/postfix.run ]; do
   sleep 1
