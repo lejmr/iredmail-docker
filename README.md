@@ -33,3 +33,5 @@ docker run --privileged -p 80:80 -p 443:443 \
            --name=iredmail iredmail:mysql-latest
 
 ```
+
+Roundcube webmail version 1.2.5
