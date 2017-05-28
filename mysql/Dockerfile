@@ -106,12 +106,6 @@ ADD services/nginx.sh /etc/service/httpd/run
 ADD services/fail2ban.sh /etc/service/fail2ban/run
 ADD services/clamav-daemon.sh /etc/service/clamav-daemon/run
 ADD services/clamav-freshclam.sh /etc/service/clamav-freshclam/run
-#ADD upgrades/processor.sh /etc/services/upgrades/run
-
-# Prepare infrastructure for persistent data upgrades
-#RUN mkdir /upgrade/scripts -p 
-#ADD upgrades/mysql.sh /upgrades/scripts
-#ADD upgrades/mysql.sql /upgrades/scripts
 
 
 ### Purge some packets and save disk space
