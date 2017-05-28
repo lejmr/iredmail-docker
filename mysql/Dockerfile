@@ -3,7 +3,7 @@ MAINTAINER Miloš Kozák <milos.kozak@lejmr.com>
 
 # Suporting software versions
 ARG IREDMAIL_VERSION=0.9.6
-ARG ADMINER_VERSION=4.3.0
+ARG ADMINER_VERSION=4.3.1
 #ARG ROUNDCUBE_VERSION=1.2.3
 
 # Default values changable at startup
