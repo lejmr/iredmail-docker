@@ -30,7 +30,7 @@ docker run --privileged -p 80:80 -p 443:443 \
            -v PATH/mysql:/var/lib/mysql \
            -v PATH/vmail:/var/vmail \
            -v PATH/clamav:/var/lib/clamav \
-           --name=iredmail iredmail:mysql-latest
+           --name=iredmail lejmr/iredmail:mysql-latest
 
 ```
 
