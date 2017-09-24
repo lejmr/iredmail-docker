@@ -10,7 +10,7 @@ Current version of container uses MySQL for accounts saving. In the future the L
   * POSTMASTER_PASSWORD - Initial password for postmaster@DOMAIN. Password can be generated according to [wiki](http://www.iredmail.org/docs/reset.user.password.html). ({PLAIN}password)
   * TIMEZONE - Container timezone that is propagated to other components
   * SOGO_WORKERS - Number of SOGo workers which can affect SOGo interface performance.
-  
+
 Container is prepared to handle data as persistent using mounted folders for data. Folders prepared for initialization are:PATH/
 
  * /var/lib/mysql
@@ -30,7 +30,7 @@ docker run --privileged -p 80:80 -p 443:443 \
            -v PATH/mysql:/var/lib/mysql \
            -v PATH/vmail:/var/vmail \
            -v PATH/clamav:/var/lib/clamav \
-           --name=iredmail iredmail:mysql-latest
+           --name=iredmail lejmr/iredmail:mysql-latest
 
 ```
 
