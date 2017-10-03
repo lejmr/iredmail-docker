@@ -34,4 +34,19 @@ docker run --privileged -p 80:80 -p 443:443 \
 
 ```
 
-Roundcube webmail version 1.2.5
+## How to upgrade from 0.9.5-1
+iRedMail v0.9.6 changes structure of its persistent store, so as changes format of SoGo cache:
+ * http://www.iredmail.org/docs/upgrade.sogo.combined.sql.tables.html
+ * http://www.iredmail.org/docs/upgrade.iredmail.0.9.5.1-0.9.6.html#mysqlmariadb-backend-special
+
+In order to apply changes upgrade process is as follows:
+
+ - Stop and remove current container ```docker rm -f iredmail```
+ - Update image ```docker pull lejmr/iredmail:mysql-0.9.6```
+ - Start iRedmail from newer image
+ - Initiate upgrade ```rm $tmpf```
+ 
+ 
+
+
+

@@ -4,7 +4,6 @@ MAINTAINER Miloš Kozák <milos.kozak@lejmr.com>
 # Suporting software versions
 ARG IREDMAIL_VERSION=0.9.6
 ARG ADMINER_VERSION=4.3.1
-#ARG ROUNDCUBE_VERSION=1.2.3
 
 # Default values changable at startup
 ARG DOMAIN=DOMAIN
@@ -55,8 +54,6 @@ RUN sed s/$(hostname_)/$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname 
     && rm /tmp/hosts_ \
     && echo $HOSTNAME > /etc/hostname \
     && sleep 5;service mysql start \
-    && sed -i "/^export RCM_VERSION/c export RCM_VERSION='1.2.5'" /opt/iredmail/conf/roundcube \
-    && sed -i "/^b415dd9f709f59abda83af87ddb776ae/c 905148c75c670ab636e5bc832bc8e216  misc/roundcubemail-1.2.5-complete.tar.gz" /opt/iredmail/pkgs/MD5.misc \
     && IREDMAIL_DEBUG='NO' \
       CHECK_NEW_IREDMAIL='NO' \
       AUTO_USE_EXISTING_CONFIG_FILE=y \
@@ -87,6 +84,7 @@ RUN tar jcf /root/mysql.tar.bz2 /var/lib/mysql && rm -rf /var/lib/mysql \
 
 # Install Adminer
 RUN wget https://www.adminer.org/static/download/${ADMINER_VERSION}/adminer-${ADMINER_VERSION}.php -O /opt/www/roundcubemail/adminer.php
+ADD update.sh /sbin/update-iredmail
 
 
 ### Startup services
