@@ -44,7 +44,7 @@ In order to apply changes upgrade process is as follows:
  - Stop and remove current container ```docker rm -f iredmail```
  - Update image ```docker pull lejmr/iredmail:mysql-0.9.6```
  - Start iRedmail from newer image
- - Initiate upgrade ```rm $tmpf```
+ - Initiate upgrade ```docker exec -ti iredmail /sbin/update-iredmail```
  
  
 
