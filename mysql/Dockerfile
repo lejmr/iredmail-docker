@@ -28,6 +28,7 @@ RUN echo "APT::Install-Recommends 0;" >> /etc/apt/apt.conf.d/01-no-recommends \
       openssl \
       mysql-server \ 
       netcat \
+      memcached \
     && apt-get autoremove -y -q \
     && apt-get clean -y -q \ 
     && echo $DOMAIN > /etc/mailname \
@@ -97,6 +98,7 @@ ADD services/iredapd.sh /etc/service/iredapd/run
 ADD services/dovecot.sh /etc/service/dovecot/run
 
 # Frontend
+ADD services/memcached.sh /etc/service/memcached/run
 ADD services/sogo.sh /etc/service/sogo/run
 ADD services/iredadmin.sh /etc/service/iredadmin/run
 ADD services/php7-fpm.sh /etc/service/php7-fpm/run
