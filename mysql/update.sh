@@ -56,3 +56,7 @@ ALTER TABLE alias DROP COLUMN is_alias;
 ALTER TABLE alias DROP COLUMN alias_to;" > $tmpf
 mysql -u root vmail < $tmpf
 rm $tmpf
+
+echo +++ Update iRedAPD
+cd /opt/iRedAPD-2.1/tools
+bash upgrade_iredapd.sh
