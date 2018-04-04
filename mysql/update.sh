@@ -1,60 +1,88 @@
 #!/bin/bash
 
 echo "+++ Backing up vmail database"
-mysqldump vmail -r /var/vmail/backup/mysql/vmail-0.9.6.sql
+mysqldump vmail -r /var/vmail/backup/mysql/vmail-0.9.7.sql
 
 echo +++ Update SQL vmail structure
 tmpf=$(tempfile)
-echo "
-CREATE TABLE IF NOT EXISTS alias_moderators (
-    id BIGINT(20) UNSIGNED AUTO_INCREMENT,
-    address VARCHAR(255) NOT NULL DEFAULT '',
-    moderator VARCHAR(255) NOT NULL DEFAULT '',
-    domain VARCHAR(255) NOT NULL DEFAULT '',
-    dest_domain VARCHAR(255) NOT NULL DEFAULT '',
-    PRIMARY KEY (id),
-    UNIQUE INDEX (address, moderator),
-    INDEX (domain),
-    INDEX (dest_domain)
-) ENGINE=InnoDB;
+echo "-- USE vmail;
 
-CREATE TABLE IF NOT EXISTS forwardings (
+-- DROP column
+ALTER TABLE mailbox DROP COLUMN local_part;
+
+-- Rename table
+RENAME TABLE alias_moderators TO moderators;
+
+-- Column used to limit number of mailing lists a domain admin can create
+ALTER TABLE domain ADD COLUMN maillists INT(10) NOT NULL DEFAULT 0;
+
+-- Column used to mark sql record is a mailing list
+ALTER TABLE forwardings ADD COLUMN `is_maillist` TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE forwardings ADD INDEX (`is_maillist`);
+
+-- Table used to store mailing list accounts
+CREATE TABLE IF NOT EXISTS maillists (
     id BIGINT(20) UNSIGNED AUTO_INCREMENT,
     address VARCHAR(255) NOT NULL DEFAULT '',
-    forwarding VARCHAR(255) NOT NULL DEFAULT '',
     domain VARCHAR(255) NOT NULL DEFAULT '',
-    dest_domain VARCHAR(255) NOT NULL DEFAULT '',
-    -- defines whether it's a standalone mail alias account. 0=no, 1=yes.
-    is_list TINYINT(1) NOT NULL DEFAULT 0,
-    -- defines whether it's a mail forwarding address of mail user. 0=no, 1=yes.
-    is_forwarding TINYINT(1) NOT NULL DEFAULT 0,
-    -- defines whether it's a per-account alias address. 0=no, 1=yes.
-    is_alias TINYINT(1) NOT NULL DEFAULT 0,
+    -- Per mailing list transport. for example: 'mlmmj:example.com/listname'.
+    transport VARCHAR(255) NOT NULL DEFAULT '',
+    accesspolicy VARCHAR(30) NOT NULL DEFAULT '',
+    maxmsgsize BIGINT(20) NOT NULL DEFAULT 0,
+    -- name of the mailing list
+    name VARCHAR(255) NOT NULL DEFAULT '',
+    -- short introduction of the mailing list on subscription page
+    description TEXT,
+    -- a server-wide unique id (a 36-characters string) for each mailing list
+    mlid VARCHAR(36) NOT NULL DEFAULT '',
+    -- control whether newsletter-style subscription from website is enabled
+    -- 1 -> enabled, 0 -> disabled
+    is_newsletter TINYINT(1) NOT NULL DEFAULT 0,
+    settings TEXT,
+    created DATETIME NOT NULL DEFAULT '1970-01-01 01:01:01',
+    modified DATETIME NOT NULL DEFAULT '1970-01-01 01:01:01',
+    expired DATETIME NOT NULL DEFAULT '9999-12-31 00:00:00',
     active TINYINT(1) NOT NULL DEFAULT 1,
     PRIMARY KEY (id),
-    UNIQUE INDEX (address, forwarding),
+    UNIQUE INDEX (address),
+    UNIQUE INDEX (mlid),
+    INDEX (is_newsletter),
     INDEX (domain),
-    INDEX (dest_domain),
-    INDEX (is_list),
-    INDEX (is_alias)
+    INDEX (active)
 ) ENGINE=InnoDB;" > $tmpf
 mysql -u root vmail < $tmpf
 rm $tmpf
 
-echo +++ Migrate mail accounts
-python /opt/iredmail/tools/migrate_sql_alias_table.py
-
-echo +++ Drop unused SQL columns and records in vmail.alias table
+echo +++ Amavisd: Add new SQL column maddr.email_raw to store mail address without address extension
 tmpf=$(tempfile)
 echo "
-DELETE FROM alias WHERE islist <> 1;
-DELETE FROM alias WHERE address=domain;
-ALTER TABLE alias DROP COLUMN goto;
-ALTER TABLE alias DROP COLUMN moderators;
-ALTER TABLE alias DROP COLUMN islist;
-ALTER TABLE alias DROP COLUMN is_alias;
-ALTER TABLE alias DROP COLUMN alias_to;" > $tmpf
-mysql -u root vmail < $tmpf
+-- If subject contains emoji, varchar doesn't work well.
+ALTER TABLE msgs MODIFY COLUMN subject VARBINARY(255) DEFAULT '';
+ALTER TABLE msgs MODIFY COLUMN from_addr VARBINARY(255) DEFAULT '';
+
+-- mail address without address extension: user+abc@domain.com -> user@domain.com
+ALTER TABLE maddr ADD COLUMN email_raw varbinary(255) NOT NULL DEFAULT '';
+
+-- index
+CREATE INDEX maddr_idx_email_raw ON maddr (email_raw);
+
+-- Create trigger to save email address withou address extension
+-- user+abc@domain.com -> user@domain.com
+DELIMITER //
+CREATE TRIGGER `maddr_email_raw`
+    BEFORE INSERT
+    ON `maddr`
+    FOR EACH ROW
+    BEGIN
+        IF (NEW.email LIKE '%+%') THEN
+            SET NEW.email_raw = CONCAT(SUBSTRING_INDEX(NEW.email, '+', 1), '@', SUBSTRING_INDEX(new.email, '@', -1));
+        ELSE
+            SET NEW.email_raw = NEW.email;
+        END IF;
+    END;
+//
+DELIMITER ;" > $tmpf
+mysql -u root amavisd < $tmpf
 rm $tmpf
 
 echo +++ Update iRedAPD
