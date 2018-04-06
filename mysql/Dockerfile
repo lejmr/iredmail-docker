@@ -6,8 +6,6 @@ ARG IREDMAIL_VERSION=0.9.7
 ARG ADMINER_VERSION=4.3.1
 
 # Default values changable at startup
-ARG DOMAIN=DOMAIN
-ARG HOSTNAME=HOSTNAME
 ARG TIMEZONE=Europe/Prague
 
 ### Installation
@@ -29,34 +27,23 @@ RUN echo "APT::Install-Recommends 0;" >> /etc/apt/apt.conf.d/01-no-recommends \
        netcat \
        memcached \
     && apt-get autoremove -y -q \
-    && apt-get clean -y -q \
-    && echo $DOMAIN > /etc/mailname \
-    && echo $HOSTNAME > /opt/hostname \
-    && mv /bin/uname /bin/uname_ \
-    && mv /bin/hostname /bin/hostname_
-
-COPY ./uname /bin/uname
-COPY ./hostname /bin/hostname
+    && apt-get clean -y -q
 
 # Install of iRedMail from sources
 WORKDIR /opt/iredmail
-
 RUN wget -O - https://bitbucket.org/zhb/iredmail/downloads/iRedMail-"${IREDMAIL_VERSION}".tar.bz2 | \
     tar xvj --strip-components=1
 
 # Generate configuration file
 COPY ./config-gen /opt/iredmail/config-gen
-RUN sh ./config-gen $HOSTNAME $DOMAIN > ./config
+RUN sh ./config-gen HOSTNAME DOMAIN > ./config
 
 # Initiate automatic installation process
-RUN sed s/$(hostname_)/$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname | xargs echo -n)/ /etc/hosts > /tmp/hosts_ \
-    && cat /tmp/hosts_ > /etc/hosts \
-    && rm /tmp/hosts_ \
-    && echo $HOSTNAME > /etc/hostname \
-    && sleep 5;service mysql start \
+RUN sleep 5;service mysql start \
     && sed -i 's/1.3.0/1.3.3/' /opt/iredmail/pkgs/MD5.misc /opt/iredmail/conf/roundcube \
     && sed -i 's/9f81625029663c7b19402542356abd5e/71b16babe3beb7639ad7a4595b3ac92a/' /opt/iredmail/pkgs/MD5.misc \
     && IREDMAIL_DEBUG='NO' \
+       IREDMAIL_HOSTNAME="HOSTNAME.DOMAIN" \
        CHECK_NEW_IREDMAIL='NO' \
        AUTO_USE_EXISTING_CONFIG_FILE=y \
        AUTO_INSTALL_WITHOUT_CONFIRM=y \
