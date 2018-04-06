@@ -23,4 +23,8 @@ if [ ! -e /opt/iredmail/.cv ]; then
   echo IREDAPD_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
 fi
 
+if [ ! -e /etc/ssl/private/iRedMail.key ] || [ ! -e /etc/ssl/certs/iRedMail.crt ]; then
+  (cd /etc/ssl && . /opt/iredmail/tools/generate_ssl_keys.sh)
+fi
+
 exit 0
