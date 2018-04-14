@@ -57,22 +57,21 @@ RUN sed s/$(hostname_)/$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname 
     && sed -i 's/1.3.0/1.3.3/' /opt/iredmail/pkgs/MD5.misc /opt/iredmail/conf/roundcube \
     && sed -i 's/9f81625029663c7b19402542356abd5e/71b16babe3beb7639ad7a4595b3ac92a/' /opt/iredmail/pkgs/MD5.misc \
     && IREDMAIL_DEBUG='NO' \
-      CHECK_NEW_IREDMAIL='NO' \
-      AUTO_USE_EXISTING_CONFIG_FILE=y \
-      AUTO_INSTALL_WITHOUT_CONFIRM=y \
-      AUTO_CLEANUP_REMOVE_SENDMAIL=y \
-      AUTO_CLEANUP_REMOVE_MOD_PYTHON=y \
-      AUTO_CLEANUP_REPLACE_FIREWALL_RULES=n \
-      AUTO_CLEANUP_RESTART_IPTABLES=n \
-      AUTO_CLEANUP_REPLACE_MYSQL_CONFIG=y \
-      AUTO_CLEANUP_RESTART_POSTFIX=n \
-      bash iRedMail.sh \
+       CHECK_NEW_IREDMAIL='NO' \
+       AUTO_USE_EXISTING_CONFIG_FILE=y \
+       AUTO_INSTALL_WITHOUT_CONFIRM=y \
+       AUTO_CLEANUP_REMOVE_SENDMAIL=y \
+       AUTO_CLEANUP_REMOVE_MOD_PYTHON=y \
+       AUTO_CLEANUP_REPLACE_FIREWALL_RULES=n \
+       AUTO_CLEANUP_RESTART_IPTABLES=n \
+       AUTO_CLEANUP_REPLACE_MYSQL_CONFIG=y \
+       AUTO_CLEANUP_RESTART_POSTFIX=n \
+       bash iRedMail.sh \
     && apt-get autoremove -y -q \
     && apt-get clean -y -q
 
 ### Final configuration
-RUN . ./config \
-    && sed -i '/^Foreground /c Foreground true' /etc/clamav/clamd.conf \
+RUN sed -i '/^Foreground /c Foreground true' /etc/clamav/clamd.conf \
     && sed -i '/init.d/c pkill -sighup clamd' /etc/logrotate.d/clamav-daemon \
     && sed -i '/^Foreground /c Foreground true' /etc/clamav/freshclam.conf \
     && sed -i 's/^bind-address/#bind-address/' /etc/mysql/mysql.conf.d/mysqld.cnf \
@@ -81,9 +80,9 @@ RUN . ./config \
     && install -o amavis -g amavis -m 640 -T /usr/share/spamassassin/user_prefs.template /var/lib/amavis/.spamassassin/user_prefs
 
 # Prepare for the first run
-RUN tar jcf /root/mysql.tar.bz2 /var/lib/mysql && rm -rf /var/lib/mysql \
-    && tar jcf /root/vmail.tar.bz2 /var/vmail && rm -rf /var/vmail \
-    && tar jcf /root/clamav.tar.bz2 /var/lib/clamav && rm -rf /var/lib/clamav
+RUN tar jcf /root/mysql.tar.bz2 -C / var/lib/mysql && rm -rf /var/lib/mysql \
+    && tar jcf /root/vmail.tar.bz2 -C / var/vmail && rm -rf /var/vmail \
+    && tar jcf /root/clamav.tar.bz2 -C / var/lib/clamav && rm -rf /var/lib/clamav
 
 # Install Adminer
 RUN wget https://www.adminer.org/static/download/${ADMINER_VERSION}/adminer-${ADMINER_VERSION}.php -O /opt/www/roundcubemail/adminer.php

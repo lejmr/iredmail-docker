@@ -15,7 +15,7 @@ check_status() {
     # Usage: check_status pid_number
     PID="${1}"
     l=$(ps -p ${PID} | wc -l | awk '{print $1}')
-    if [ X"$l" == X"2" ]; then
+    if [ X"$l" = X"2" ]; then
         echo "running"
     else
         echo "stopped"
@@ -49,7 +49,7 @@ if [ -f ${PIDFILE} ]; then
   PID="$(cat ${PIDFILE})"
   s="$(check_status ${PID})"
 
-  if [ X"$s" == X"running" ]; then
+  if [ X"$s" = X"running" ]; then
     echo "${PROG} is already running."
     kill -15 $PID
     rm -f ${PIDFILE} >/dev/null 2>&1
