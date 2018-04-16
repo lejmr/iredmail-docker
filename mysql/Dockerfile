@@ -71,8 +71,7 @@ RUN sed s/$(hostname_)/$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname 
     && apt-get clean -y -q
 
 ### Final configuration
-RUN . ./config \
-    && sed -i '/^Foreground /c Foreground true' /etc/clamav/clamd.conf \
+RUN sed -i '/^Foreground /c Foreground true' /etc/clamav/clamd.conf \
     && sed -i '/init.d/c pkill -sighup clamd' /etc/logrotate.d/clamav-daemon \
     && sed -i '/^Foreground /c Foreground true' /etc/clamav/freshclam.conf \
     && sed -i 's/^bind-address/#bind-address/' /etc/mysql/mysql.conf.d/mysqld.cnf \
