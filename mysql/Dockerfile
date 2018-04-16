@@ -80,9 +80,9 @@ RUN sed -i '/^Foreground /c Foreground true' /etc/clamav/clamd.conf \
     && install -o amavis -g amavis -m 640 -T /usr/share/spamassassin/user_prefs.template /var/lib/amavis/.spamassassin/user_prefs
 
 # Prepare for the first run
-RUN tar jcf /root/mysql.tar.bz2 -C / var/lib/mysql && rm -rf /var/lib/mysql \
-    && tar jcf /root/vmail.tar.bz2 -C / var/vmail && rm -rf /var/vmail \
-    && tar jcf /root/clamav.tar.bz2 -C / var/lib/clamav && rm -rf /var/lib/clamav
+RUN tar jcf /root/mysql.tar.bz2 /var/lib/mysql && rm -rf /var/lib/mysql \
+    && tar jcf /root/vmail.tar.bz2 /var/vmail && rm -rf /var/vmail \
+    && rm -rf /var/lib/clamav/*
 
 # Install Adminer
 RUN wget https://www.adminer.org/static/download/${ADMINER_VERSION}/adminer-${ADMINER_VERSION}.php -O /opt/www/roundcubemail/adminer.php
