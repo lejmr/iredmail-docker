@@ -1,9 +1,8 @@
 #!/bin/sh
 
-# Wait until SOGo is started
-while ! nc -z localhost 20000; do   
-  sleep 1
+# Wait until database files created
+while [ ! -e /var/lib/clamav/main.cvd ] && [ ! -e /var/lib/clamav/bytecode.cvd ] && [ ! -e /var/lib/clamav/daily.cvd ]; do
+    sleep 1
 done
-sleep 10
 
 exec /usr/bin/freshclam -d --quiet
