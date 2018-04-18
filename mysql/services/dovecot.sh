@@ -4,7 +4,7 @@
 while ! nc -z localhost 25; do   
   sleep 1
 done
-
+sleep 5
 
 if [ ! -z ${DOMAIN} ]; then 
     sed -i "s/DOMAIN/${DOMAIN}/g" /etc/dovecot/dovecot.conf
