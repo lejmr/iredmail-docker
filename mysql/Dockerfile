@@ -3,7 +3,6 @@ MAINTAINER Miloš Kozák <milos.kozak@lejmr.com>
 
 # Suporting software versions
 ARG IREDMAIL_VERSION=0.9.7
-ARG ADMINER_VERSION=4.3.1
 
 # Default values changable at startup
 ARG DOMAIN=DOMAIN
@@ -84,8 +83,6 @@ RUN tar jcf /root/mysql.tar.bz2 /var/lib/mysql && rm -rf /var/lib/mysql \
     && tar jcf /root/vmail.tar.bz2 /var/vmail && rm -rf /var/vmail \
     && rm -rf /var/lib/clamav/*
 
-# Install Adminer
-RUN wget https://www.adminer.org/static/download/${ADMINER_VERSION}/adminer-${ADMINER_VERSION}.php -O /opt/www/roundcubemail/adminer.php
 ADD update.sh /sbin/update-iredmail
 
 
