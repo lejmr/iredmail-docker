@@ -1,6 +1,7 @@
 #!/bin/bash
 DOMAIN=$2
 HOSTNAME=$1
+DEFAULT_PASSWORD_SCHEME=$3
 echo export VMAIL_USER_HOME_DIR='/var/vmail'
 echo export STORAGE_BASE_DIR='/var/vmail'
 echo export STORAGE_MAILBOX_DIR='/var/vmail/vmail1'
