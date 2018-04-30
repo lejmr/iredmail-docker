@@ -10,6 +10,7 @@ ARG HOSTNAME=HOSTNAME
 ARG TIMEZONE=Europe/Prague
 ARG PERMITNETWORKS=127.0.0.1
 ARG PASSWORD_SCHEME=SSHA512
+ARG ROUNDCUBEPLUGINS="'managesieve', 'password', 'enigma'"
 
 ### Installation
 # Prerequisites
