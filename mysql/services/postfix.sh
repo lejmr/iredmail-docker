@@ -41,6 +41,7 @@ if [ ! -d /var/vmail/backup ]; then
         echo "127.0.0.1     ${HOSTNAME}.${DOMAIN}" >> /etc/hosts
     fi
     
+    sed -i "s/mynetworks \= 127.0.0.1/mynetworks \= ${PERMITNETWORKS}/g" /etc/postfix/main.cf
     # Update of local aliases
     newaliases
 fi
