@@ -8,6 +8,9 @@ ARG IREDMAIL_VERSION=0.9.7
 ARG DOMAIN=DOMAIN
 ARG HOSTNAME=HOSTNAME
 ARG TIMEZONE=Europe/Prague
+ARG PERMITNETWORKS=127.0.0.1
+ARG PASSWORD_SCHEME=SSHA512
+ARG ROUNDCUBEPLUGINS="'managesieve', 'password', 'enigma'"
 
 ### Installation
 # Prerequisites
@@ -45,7 +48,7 @@ RUN wget -O - https://bitbucket.org/zhb/iredmail/downloads/iRedMail-"${IREDMAIL_
 
 # Generate configuration file
 COPY ./config-gen /opt/iredmail/config-gen
-RUN sh ./config-gen $HOSTNAME $DOMAIN > ./config
+RUN sh ./config-gen $HOSTNAME $DOMAIN $PASSWORD_SCHEME > ./config
 
 # Initiate automatic installation process
 RUN sed s/$(hostname_)/$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname | xargs echo -n)/ /etc/hosts > /tmp/hosts_ \

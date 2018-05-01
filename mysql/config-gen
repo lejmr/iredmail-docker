@@ -1,6 +1,7 @@
 #!/bin/bash
 DOMAIN=$2
 HOSTNAME=$1
+PASSWORD_SCHEME=$3
 echo export VMAIL_USER_HOME_DIR='/var/vmail'
 echo export STORAGE_BASE_DIR='/var/vmail'
 echo export STORAGE_MAILBOX_DIR='/var/vmail/vmail1'
@@ -16,7 +17,7 @@ echo export VMAIL_DB_BIND_PASSWD=TEMP_VMAIL_DB_BIND_PASSWD
 echo export VMAIL_DB_ADMIN_PASSWD=TEMP_VMAIL_DB_ADMIN_PASSWD
 echo export MYSQL_ROOT_USER='root'
 echo export MYSQL_ROOT_PASSWD="$(openssl rand -hex 32)"
-echo export DEFAULT_PASSWORD_SCHEME='SSHA'
+echo export DEFAULT_PASSWORD_SCHEME="SSHA512"
 echo export dn2dnsname="$HOSTNAME.$DOMAIN"
 echo export SQL_SERVER_ADDRESS='127.0.0.1'
 echo export SQL_SERVER_PORT='3306'
