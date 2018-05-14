@@ -5,7 +5,7 @@ mysqldump vmail -r /var/vmail/backup/mysql/vmail-0.9.7.sql
 
 echo +++ Update SQL vmail structure
 tmpf=$(tempfile)
-echo "-- USE vmail;
+echo "USE vmail;
 
 -- DROP column
 ALTER TABLE mailbox DROP COLUMN local_part;
@@ -17,8 +17,8 @@ RENAME TABLE alias_moderators TO moderators;
 ALTER TABLE domain ADD COLUMN maillists INT(10) NOT NULL DEFAULT 0;
 
 -- Column used to mark sql record is a mailing list
-ALTER TABLE forwardings ADD COLUMN `is_maillist` TINYINT(1) NOT NULL DEFAULT 0;
-ALTER TABLE forwardings ADD INDEX (`is_maillist`);
+ALTER TABLE forwardings ADD COLUMN is_maillist TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE forwardings ADD INDEX (\`is_maillist\`);
 
 -- Table used to store mailing list accounts
 CREATE TABLE IF NOT EXISTS maillists (
@@ -69,9 +69,9 @@ CREATE INDEX maddr_idx_email_raw ON maddr (email_raw);
 -- Create trigger to save email address withou address extension
 -- user+abc@domain.com -> user@domain.com
 DELIMITER //
-CREATE TRIGGER `maddr_email_raw`
+CREATE TRIGGER \`maddr_email_raw\`
     BEFORE INSERT
-    ON `maddr`
+    ON \`maddr\`
     FOR EACH ROW
     BEGIN
         IF (NEW.email LIKE '%+%') THEN
@@ -86,5 +86,5 @@ mysql -u root amavisd < $tmpf
 rm $tmpf
 
 echo +++ Update iRedAPD
-cd /opt/iRedAPD-2.1/tools
+cd /opt/iRedAPD-2.2/tools
 bash upgrade_iredapd.sh
