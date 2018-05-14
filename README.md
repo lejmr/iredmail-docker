@@ -34,6 +34,19 @@ docker run --privileged -p 80:80 -p 443:443 \
 
 ```
 
+## How to upgrade from 0.9.7 to 0.9.8
+iRedMail v0.9.8 changes structure of its persistent store, for easier email alias management:
+ * http://www.iredmail.org/docs/upgrade.iredmail.0.9.7-0.9.8.html#mysqlmariadb-backend-special
+
+In order to apply changes upgrade process is as follows:
+
+ - Stop and remove current container ```docker rm -f iredmail```
+ - Update image ```docker pull lejmr/iredmail:mysql-0.9.8```
+ - Start iRedmail from newer image
+ - Initiate upgrade ```docker exec -ti iredmail /sbin/update-iredmail```
+ - Restart container ```docker restart iredmail```
+  
+ 
 ## How to upgrade from 0.9.6 to 0.9.7
 iRedMail v0.9.7 changes structure of its persistent store, for easier email alias management:
  * http://www.iredmail.org/docs/upgrade.iredmail.0.9.6-0.9.7.html#mysqlmariadb-backend-special
