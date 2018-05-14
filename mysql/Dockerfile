@@ -7,14 +7,12 @@ ARG IREDMAIL_VERSION=0.9.7
 # Default values changable at startup
 ARG DOMAIN=DOMAIN
 ARG HOSTNAME=HOSTNAME
-ARG TIMEZONE=Europe/Prague
 
 ### Installation
 # Prerequisites
 ENV DEBIAN_FRONTEND noninteractive
 RUN echo "APT::Install-Recommends 0;" >> /etc/apt/apt.conf.d/01-no-recommends \
     && echo "APT::Install-Suggests 0;" >> /etc/apt/apt.conf.d/01-no-recommends \
-    && echo $TIMEZONE > /etc/timezone \
     && apt-get -q update \
     && apt-get upgrade -y \
     && apt-get install -y -q \
@@ -121,3 +119,4 @@ EXPOSE 80 443 25 587 110 143 993 995
 
 # Default values changable at startup
 ENV SOGO_WORKERS=2
+ENV TZ=Etc/UTC
