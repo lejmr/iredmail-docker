@@ -108,6 +108,7 @@ ADD services/fail2ban.sh /etc/service/fail2ban/run
 ADD services/clamav-daemon.sh /etc/service/clamav-daemon/run
 ADD services/clamav-freshclam.sh /etc/service/clamav-freshclam/run
 ADD services/netdata.sh /etc/service/netdata/run
+ADD services/mlmmjadmin.sh /etc/service/mlmmjadmin/run
 
 
 ### Purge some packets and save disk space
