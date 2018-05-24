@@ -8,7 +8,7 @@ Current version of container uses MySQL for accounts saving. In the future the L
   * HOSTNAME - server name (mail, so FQDN will be mail.example.com)
   * MYSQL_ROOT_PASSWORD - Root password for MySQL server installation
   * POSTMASTER_PASSWORD - Initial password for postmaster@DOMAIN. Password can be generated according to [wiki](http://www.iredmail.org/docs/reset.user.password.html). ({PLAIN}password)
-  * TIMEZONE - Container timezone that is propagated to other components
+  * TZ - Container timezone that is propagated to other components
   * SOGO_WORKERS - Number of SOGo workers which can affect SOGo interface performance.
 
 Container is prepared to handle data as persistent using mounted folders for data. Folders prepared for initialization are:PATH/
@@ -24,7 +24,7 @@ docker run --privileged -p 80:80 -p 443:443 \
            -e "DOMAIN=example.com" -e "HOSTNAME=mail" \
            -e "MYSQL_ROOT_PASSWORD=password" \
            -e "SOGO_WORKERS=1" \
-           -e "TIMEZONE=Europe/Prague" \
+           -e "TZ=Europe/Prague" \
            -e "POSTMASTER_PASSWORD={PLAIN}password" \
            -e "IREDAPD_PLUGINS=['reject_null_sender', 'reject_sender_login_mismatch', 'greylisting', 'throttle', 'amavisd_wblist', 'sql_alias_access_policy']" \
            -v PATH/mysql:/var/lib/mysql \

@@ -3,19 +3,16 @@ MAINTAINER Miloš Kozák <milos.kozak@lejmr.com>
 
 # Suporting software versions
 ARG IREDMAIL_VERSION=0.9.8
-ARG ADMINER_VERSION=4.6.2
 
 # Default values changable at startup
 ARG DOMAIN=DOMAIN
 ARG HOSTNAME=HOSTNAME
-ARG TIMEZONE=Europe/Prague
 
 ### Installation
 # Prerequisites
 ENV DEBIAN_FRONTEND noninteractive
 RUN echo "APT::Install-Recommends 0;" >> /etc/apt/apt.conf.d/01-no-recommends \
     && echo "APT::Install-Suggests 0;" >> /etc/apt/apt.conf.d/01-no-recommends \
-    && echo $TIMEZONE > /etc/timezone \
     && apt-get -q update \
     && apt-get upgrade -y \
     && apt-get install -y -q \
@@ -82,8 +79,6 @@ RUN tar jcf /root/mysql.tar.bz2 /var/lib/mysql && rm -rf /var/lib/mysql \
     && tar jcf /root/vmail.tar.bz2 /var/vmail && rm -rf /var/vmail \
     && rm -rf /var/lib/clamav/*
 
-# Install Adminer
-RUN wget https://www.adminer.org/static/download/${ADMINER_VERSION}/adminer-${ADMINER_VERSION}.php -O /opt/www/roundcubemail/adminer.php
 ADD update.sh /sbin/update-iredmail
 
 
@@ -124,3 +119,4 @@ EXPOSE 80 443 25 587 110 143 993 995
 
 # Default values changable at startup
 ENV SOGO_WORKERS=2
+ENV TZ=Etc/UTC
