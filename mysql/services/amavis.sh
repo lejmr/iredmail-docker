@@ -7,14 +7,14 @@ done
 
 
 echo "*** Starting amavis.."
-sed -i "s/DOMAIN/${DOMAIN}/g" /etc/amavis/conf.d/50-user
-sed -i "s/HOSTNAME/${HOSTNAME}/g" /etc/amavis/conf.d/50-user
-if [ ! -e /var/lib/dkim/${DOMAIN}.pem ]; then
-    amavisd-new genrsa /var/lib/dkim/${DOMAIN}.pem 1024
-    chown amavis:amavis /var/lib/dkim/${DOMAIN}.pem
-    chmod 0400 /var/lib/dkim/${DOMAIN}.pem
+if [ ! -z ${DOMAIN} ]; then 
+    sed -i "s/DOMAIN/${DOMAIN}/g" /etc/amavis/conf.d/50-user
+    mv /var/lib/dkim/DOMAIN.pem /var/lib/dkim/${DOMAIN}.pem
 fi
 
+if [ ! -z ${HOSTNAME} ]; then 
+    sed -i "s/HOSTNAME/${HOSTNAME}/g" /etc/amavis/conf.d/50-user
+fi;
 
 # Update password
 . /opt/iredmail/.cv
