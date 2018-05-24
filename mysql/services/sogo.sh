@@ -21,6 +21,7 @@ DAEMON_OPTS="-WOWorkersCount $SOGO_WORKERS -WOPidFile $PIDFILE -WOLogFile $LOGFI
 if [ ! -z ${TIMEZONE} ]; then
     DAEMON_OPTS="$DAEMON_OPTS -WSOGoTimeZone $TIMEZONE"
 fi
+sed -i "/SOGoTimeZone/s#=.*#= $TZ;#" /etc/sogo/sogo.conf
 
 # Update MySQL password
 . /opt/iredmail/.cv
