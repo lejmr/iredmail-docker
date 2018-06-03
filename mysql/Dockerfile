@@ -66,7 +66,9 @@ RUN sed -i '/^Foreground /c Foreground true' /etc/clamav/clamd.conf \
     && sed -i 's/^bind-address/#bind-address/' /etc/mysql/mysql.conf.d/mysqld.cnf \
     && sed -i 's/SHOWWARNING[ \t]*=.*/SHOWWARNING=false/g' /etc/tmpreaper.conf \
     && install -o amavis -g amavis -m 750 -d /var/lib/amavis/.spamassassin \
-    && install -o amavis -g amavis -m 640 -T /usr/share/spamassassin/user_prefs.template /var/lib/amavis/.spamassassin/user_prefs
+    && install -o amavis -g amavis -m 640 -T /usr/share/spamassassin/user_prefs.template /var/lib/amavis/.spamassassin/user_prefs \
+    && rm -f /etc/ssl/private/iRedMail.key \
+    && rm -f /etc/ssl/certs/iRedMail.crt
 
 # Prepare for the first run
 RUN tar jcf /root/mysql.tar.bz2 /var/lib/mysql && rm -rf /var/lib/mysql \

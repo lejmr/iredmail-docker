@@ -25,4 +25,8 @@ fi
 
 hostname -f > /etc/mailname
 
+if [ ! -e /etc/ssl/private/iRedMail.key ] || [ ! -e /etc/ssl/certs/iRedMail.crt ]; then
+  (cd /etc/ssl && . /opt/iredmail/tools/generate_ssl_keys.sh)
+fi
+
 exit 0
