@@ -25,25 +25,18 @@ RUN echo "APT::Install-Recommends 0;" >> /etc/apt/apt.conf.d/01-no-recommends \
        mysql-server \
        netcat \
        memcached \
+       tmpreaper \
     && apt-get autoremove -y -q \
-    && apt-get clean -y -q \
-    && echo $DOMAIN > /etc/mailname \
-    && echo $HOSTNAME > /opt/hostname \
-    && mv /bin/uname /bin/uname_ \
-    && mv /bin/hostname /bin/hostname_
-
-COPY ./uname /bin/uname
-COPY ./hostname /bin/hostname
+    && apt-get clean -y -q
 
 # Install of iRedMail from sources
 WORKDIR /opt/iredmail
-
 RUN wget -O - https://bitbucket.org/zhb/iredmail/downloads/iRedMail-"${IREDMAIL_VERSION}".tar.bz2 | \
     tar xvj --strip-components=1
 
 # Generate configuration file
 COPY ./config-gen /opt/iredmail/config-gen
-RUN sh ./config-gen $HOSTNAME $DOMAIN > ./config
+RUN sh ./config-gen HOSTNAME DOMAIN > ./config
 
 # Initiate automatic installation process
 RUN sed s/$(hostname_)/$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname | xargs echo -n)/ /etc/hosts > /tmp/hosts_ \
@@ -52,6 +45,7 @@ RUN sed s/$(hostname_)/$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname 
     && echo $HOSTNAME > /etc/hostname \
     && sleep 5;service mysql start \
     && IREDMAIL_DEBUG='NO' \
+       IREDMAIL_HOSTNAME="HOSTNAME.DOMAIN" \
        CHECK_NEW_IREDMAIL='NO' \
        AUTO_USE_EXISTING_CONFIG_FILE=y \
        AUTO_INSTALL_WITHOUT_CONFIRM=y \

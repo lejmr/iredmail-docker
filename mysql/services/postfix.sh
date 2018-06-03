@@ -6,43 +6,47 @@ while [ ! -f /var/tmp/mysql.run ]; do
   sleep 1
 done
 # MySQL actually runs
-while ! mysqladmin ping -h localhost --silent; do
-  sleep 1; 
+while ! mysqladmin ping --silent; do
+  sleep 1;
 done
 
+DOMAIN=$(hostname -d)
+HOSTNAME=$(hostname -s)
 
 # Service startup
-if [ ! -z ${DOMAIN} ]; then 
-    sed -i "s/DOMAIN/${DOMAIN}/g" /etc/postfix/main.cf /etc/postfix/aliases
-    newaliases
-fi
-
-if [ ! -z ${HOSTNAME} ]; then 
-    sed -i "s/HOSTNAME/${HOSTNAME}/g" /etc/postfix/main.cf
-fi;
+sed -i "s/HOSTNAME/${HOSTNAME}/g" /etc/postfix/main.cf
+sed -i "s/DOMAIN/${DOMAIN}/g" /etc/postfix/main.cf /etc/postfix/aliases
+newaliases
 
 
 # Restore data in case of first run
-if [ ! -d /var/vmail/backup ]; then
+if [ ! -d /var/vmail/backup ] && [ ! -d /var/vmail/vmail1/${DOMAIN} ]; then
     echo "*** Creating vmail structure.."
     cd / && tar jxf /root/vmail.tar.bz2
     rm /root/vmail.tar.bz2
-    
-    if [ ! -z ${DOMAIN} ]; then 
-        sed -i "s/DOMAIN/${DOMAIN}/g" /etc/postfix/main.cf /etc/postfix/aliases        
-        mv /var/vmail/vmail1/DOMAIN /var/vmail/vmail1/$DOMAIN
-    fi
-    
-    if [ ! -z ${HOSTNAME} ]; then 
-        sed -i "s/HOSTNAME/${HOSTNAME}/g" /etc/postfix/main.cf
-    fi;
-    
-    if [ ! -z ${HOSTNAME} ] && [ ! -z ${DOMAIN} ]; then 
-        echo "127.0.0.1     ${HOSTNAME}.${DOMAIN}" >> /etc/hosts
-    fi
-    
-    # Update of local aliases
-    newaliases
+    mv /var/vmail/vmail1/DOMAIN /var/vmail/vmail1/${DOMAIN}
+
+    # Patch iredmail-tips and welcome email
+    . /opt/iredmail/.cv
+    MAILDIR="/var/vmail/vmail1/${DOMAIN}/p/o/s/postmaster/Maildir/new"
+    FILES="/opt/iredmail/iRedMail.tips ${MAILDIR}/details.eml"
+    sed -i "s/Root user:[ \t]*root,[ \t]*Password:[ \t]*.*/Root user: root, Password:\"${MYSQL_ROOT_PASSWORD}\"/" ${FILES}
+    sed -i "s/Username:[ \t]*vmail,[ \t]*Password:[ \t]*.*/Username: vmail, Password:\"${VMAIL_DB_BIND_PASSWD}\"/" ${FILES}
+    sed -i "s/Username:[ \t]*vmailadmin,[ \t]*Password:[ \t]*.*/Username: vmailadmin, Password:\"${VMAIL_DB_ADMIN_PASSWD}\"/" ${FILES}
+    sed -i "/Database user:[ \t]*amavisd/{n;s/Database password:[ \t]*.*/Database password: \"${AMAVISD_DB_PASSWD}\"/}" ${FILES}
+    sed -i "/Username:[ \t]*iredapd/{n;s/Password:[ \t]*.*/Password: \"${IREDAPD_DB_PASSWD}\"/}" ${FILES}
+    sed -i "/URL:[ \t]*https:.*\/iredadmin\//{n;n;s/Password:[ \t]*.*/Password: \"${POSTMASTER_PASSWORD}\"/}" ${FILES}
+    sed -i "/Username:[ \t]iredadmin/{n;s/Password:[ \t]*.*/Password: \"${IREDADMIN_DB_PASSWD}\"/}" ${FILES}
+    sed -i "/URL:[ \t]*https:.*\/mail\//{n;n;s/Password:[ \t]*.*/Password: \"${POSTMASTER_PASSWORD}\"/}" ${FILES}
+    sed -i "/Username:[ \t]roundcube/{n;s/Password:[ \t]*.*/Password: \"${RCM_DB_PASSWD}\"/}" ${FILES}
+    sed -i "/Database user:[ \t]*sogo/{n;s/Database password:[ \t]*.*/Database password: \"${SOGO_DB_PASSWD}\"/}" ${FILES}
+    sed -i "/username:[ \t]*sogo_sieve_master@not-exist\.com/{n;s/password:[ \t]*.*/password: \"${SOGO_SIEVE_MASTER_PASSWD}\"/}" ${FILES}
+    for file in $FILES; do
+        /bin/echo -e "$(sed '/DNS record for DKIM support:/q' ${file})\n$(amavisd-new showkeys)\n\n$(sed -ne '/Amavisd-new:/,$ p' ${file})" > ${file}
+    done
+    FILES="${FILES} ${MAILDIR}/links.eml ${MAILDIR}/mua.eml"
+    sed -i "s/DOMAIN/${DOMAIN}/g" ${FILES}
+    sed -i "s/HOSTNAME/${HOSTNAME}/g" ${FILES}
 fi
 
 FILES="localtime services resolv.conf hosts"

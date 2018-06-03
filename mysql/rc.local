@@ -23,4 +23,6 @@ if [ ! -e /opt/iredmail/.cv ]; then
   echo IREDAPD_DB_PASSWD="$(openssl rand -hex 32)" >> /opt/iredmail/.cv
 fi
 
+hostname -f > /etc/mailname
+
 exit 0

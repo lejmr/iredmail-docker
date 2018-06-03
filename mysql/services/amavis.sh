@@ -5,16 +5,14 @@ while [ ! -f /var/tmp/postfix.run ]; do
   sleep 1
 done
 
-
 echo "*** Starting amavis.."
-if [ ! -z ${DOMAIN} ]; then 
+if [ -e /var/lib/dkim/DOMAIN.pem ]; then
+    DOMAIN=$(hostname -d)
+    HOSTNAME=$(hostname -s)
     sed -i "s/DOMAIN/${DOMAIN}/g" /etc/amavis/conf.d/50-user
+    sed -i "s/HOSTNAME/${HOSTNAME}/g" /etc/amavis/conf.d/50-user
     mv /var/lib/dkim/DOMAIN.pem /var/lib/dkim/${DOMAIN}.pem
 fi
-
-if [ ! -z ${HOSTNAME} ]; then 
-    sed -i "s/HOSTNAME/${HOSTNAME}/g" /etc/amavis/conf.d/50-user
-fi;
 
 # Update password
 . /opt/iredmail/.cv

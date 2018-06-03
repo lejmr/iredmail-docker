@@ -18,6 +18,9 @@ LOGFILE=/var/log/$NAME/$NAME.log
 DAEMON_OPTS="-WOWorkersCount $SOGO_WORKERS -WOPidFile $PIDFILE -WOLogFile $LOGFILE -WONoDetach YES"
 
 # Manually change timezone based on attribute
+if [ ! -z ${TIMEZONE} ]; then
+    DAEMON_OPTS="$DAEMON_OPTS -WSOGoTimeZone $TIMEZONE"
+fi
 sed -i "/SOGoTimeZone/s#=.*#= $TZ;#" /etc/sogo/sogo.conf
 
 # Update MySQL password
