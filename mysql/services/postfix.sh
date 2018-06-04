@@ -79,6 +79,7 @@ sed -i "s/TEMP_VMAIL_DB_BIND_PASSWD/$VMAIL_DB_BIND_PASSWD/" /etc/postfix/mysql/c
     /etc/postfix/mysql/sender_login_maps.cf \
     /etc/postfix/mysql/transport_maps_domain.cf \
     /etc/postfix/mysql/transport_maps_user.cf \
+    /etc/postfix/mysql/transport_maps_maillist.cf \
     /etc/postfix/mysql/virtual_alias_maps.cf \
     /etc/postfix/mysql/virtual_mailbox_domains.cf \
     /etc/postfix/mysql/virtual_mailbox_maps.cf \
