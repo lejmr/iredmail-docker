@@ -106,6 +106,7 @@ trap "trap_term_signal" TERM
 
 echo "*** Starting postfix.."
 touch /var/tmp/postfix.run
+chown -R postfix /var/spool/postfix
 /usr/lib/postfix/sbin/master -c /etc/postfix -d &
 pid=$!
 
