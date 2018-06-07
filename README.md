@@ -19,7 +19,7 @@ With all information prepared, let's test your new iRedMail server:
 
 ```
 docker run --privileged -p 80:80 -p 443:443 \
-           -h mail.example.com \
+           -h HOSTNAME.DOMAIN \
            -e "MYSQL_ROOT_PASSWORD=password" \
            -e "SOGO_WORKERS=1" \
            -e "TZ=Europe/Prague" \
