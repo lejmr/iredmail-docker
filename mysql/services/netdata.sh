@@ -2,7 +2,7 @@
 
 ### Wait until postfix is started
 echo "*** Starting Netdata.."
-. /opt/iredmail/.cv
+DOMAIN=$(hostname -d)
 if [ ! -z ${DOMAIN} ]; then 
     echo "postmaster@${DOMAIN}:${POSTMASTER_PASSWORD}" > /etc/nginx/netdata.users
 fi
