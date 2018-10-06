@@ -3,6 +3,9 @@
 echo "+++ Backing up vmail database"
 mysqldump vmail -r /var/vmail/backup/mysql/vmail-0.9.7.sql
 
+echo "+++ Ensuring /var/vmail has right permissions"
+chmod 0755 /var/vmail -R
+
 echo +++ Update SQL vmail structure
 tmpf=$(tempfile)
 echo "USE vmail;
