@@ -37,13 +37,15 @@ RUN wget -O - https://bitbucket.org/zhb/iredmail/downloads/iRedMail-"${IREDMAIL_
 # Generate configuration file
 COPY ./config-gen /opt/iredmail/config-gen
 RUN sh ./config-gen HOSTNAME DOMAIN > ./config
+RUN mkdir /var/run/mysql && chown mysql:mysql /var/run/mysql 
 
 # Initiate automatic installation process
-RUN sed s/$(hostname_)/$(cat /opt/hostname | xargs echo -n).$(cat /etc/mailname | xargs echo -n)/ /etc/hosts > /tmp/hosts_ \
+RUN sed s/$(hostname)/$HOSTNAME.$DOMAIN/ /etc/hosts > /tmp/hosts_ \
     && cat /tmp/hosts_ > /etc/hosts \
     && rm /tmp/hosts_ \
     && echo $HOSTNAME > /etc/hostname \
-    && sleep 5;service mysql start \
+    && chown mysql:mysql -R /var/lib/mysql \
+    && service mysql start \
     && IREDMAIL_DEBUG='NO' \
        IREDMAIL_HOSTNAME="HOSTNAME.DOMAIN" \
        CHECK_NEW_IREDMAIL='NO' \
