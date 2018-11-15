@@ -106,6 +106,8 @@ trap "trap_term_signal" TERM
 
 echo "*** Starting postfix.."
 touch /var/tmp/postfix.run
+# missing from latest images for some reason
+mkdir /var/spool/postfix/hold
 chown -R postfix /var/spool/postfix
 /usr/lib/postfix/sbin/master -c /etc/postfix -d &
 pid=$!
