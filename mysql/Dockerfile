@@ -10,9 +10,12 @@ ARG HOSTNAME=HOSTNAME
 
 ### Installation
 WORKDIR /opt/iredmail
-RUN yum install -y mariadb-server
-# Start temporary MariaDB server
-RUN mysql_install_db  --datadir=/var/lib/mysql --skip-name-resolve --force \
+ADD static_files /
+
+# All-in-one installation
+RUN yum install -y mariadb-server openssl \
+    # Start temporary MariaDB server
+    && mysql_install_db  --datadir=/var/lib/mysql --skip-name-resolve --force \
     && chown mysql:mysql /var/lib/mysql -R \
     && mysqld_safe & while ! mysqladmin ping --silent; do sleep 1; done \
     && echo "SELECT 1;"  | mysql \
@@ -20,34 +23,8 @@ RUN mysql_install_db  --datadir=/var/lib/mysql --skip-name-resolve --force \
     # Download iRedMail
     && curl -k -q https://codeload.github.com/iredmail/iRedMail/tar.gz/"${IREDMAIL_VERSION}" | \
     tar xvz --strip-components=1 \
-    # Prepare default configuration
-    # Install from tar file
-    && IREDMAIL_DEBUG='NO' \
-       IREDMAIL_HOSTNAME="HOSTNAME.DOMAIN" \
-       CHECK_NEW_IREDMAIL='NO' \
-       AUTO_USE_EXISTING_CONFIG_FILE=y \
-       AUTO_INSTALL_WITHOUT_CONFIRM=y \
-       AUTO_CLEANUP_REMOVE_SENDMAIL=y \
-       AUTO_CLEANUP_REMOVE_MOD_PYTHON=y \
-       AUTO_CLEANUP_REPLACE_FIREWALL_RULES=n \
-       AUTO_CLEANUP_RESTART_IPTABLES=n \
-       AUTO_CLEANUP_REPLACE_MYSQL_CONFIG=y \
-       AUTO_CLEANUP_RESTART_POSTFIX=n \
-       bash iRedMail.sh
-    # Cleanup
-    # Remove mysql, all dependencies and all caches
-
-# # Generate configuration file
-# COPY ./config-gen /opt/iredmail/config-gen
-# RUN sh ./config-gen HOSTNAME DOMAIN > ./config
-
-# # Initiate automatic installation process
-
-# # RUN mkdir /var/run/mysqld \
-#     # && chown mysql:mysql /var/run/mysqld \
-# RUN rm -rf /var/lib/mysql/* \
-#     && mysql_install_db --user=mysql --datadir=/var/lib/mysql --mysqld-file=/usr/sbin/mysqld || /bin/true \
-#     && mysqld_safe \
+    # Prepare default configuration and install
+    && static/config-gen HOSTNAME DOMAIN > ./config \
     && IREDMAIL_DEBUG='NO' \
        IREDMAIL_HOSTNAME="HOSTNAME.DOMAIN" \
        CHECK_NEW_IREDMAIL='NO' \
@@ -60,6 +37,46 @@ RUN mysql_install_db  --datadir=/var/lib/mysql --skip-name-resolve --force \
        AUTO_CLEANUP_REPLACE_MYSQL_CONFIG=y \
        AUTO_CLEANUP_RESTART_POSTFIX=n \
        bash iRedMail.sh \
+    # Remove all dependencies and all caches
+    && mkdir dumps \
+    && for d in amavisd iredadmin iredapd roundcubemail sogo vmail; do mysqldump $d | gzip -c > dumps/${d}.sql.gz; done \
+    && yum clean all \
+    && find /var/cache/yum/ -type f -exec rm -f {} \; \
+    && rm /var/lib/mysql -rf \
+    && rm -rf /var/lib/clamav/* \
+    && rm -rf /var/vmail/vmail1/DOMAIN \
+    && rm -f /etc/ssl/private/iRedMail.key \
+    && rm -f /etc/ssl/certs/iRedMail.crt \
+    && rm -f /var/lib/dkim/DOMAIN.pem \
+    # Prepare for first run
+    && tar jcf dumps/vmail.tar.bz2 /var/vmail \
+    && rm -rf /var/vmail
+
+
+
+# # Generate configuration file
+# COPY ./config-gen /opt/iredmail/config-gen
+# RUN sh ./config-gen HOSTNAME DOMAIN > ./config
+
+# # Initiate automatic installation process
+
+# # RUN mkdir /var/run/mysqld \
+#     # && chown mysql:mysql /var/run/mysqld \
+# RUN rm -rf /var/lib/mysql/* \
+#     && mysql_install_db --user=mysql --datadir=/var/lib/mysql --mysqld-file=/usr/sbin/mysqld || /bin/true \
+#     && mysqld_safe \
+    # && IREDMAIL_DEBUG='NO' \
+    #    IREDMAIL_HOSTNAME="HOSTNAME.DOMAIN" \
+    #    CHECK_NEW_IREDMAIL='NO' \
+    #    AUTO_USE_EXISTING_CONFIG_FILE=y \
+    #    AUTO_INSTALL_WITHOUT_CONFIRM=y \
+    #    AUTO_CLEANUP_REMOVE_SENDMAIL=y \
+    #    AUTO_CLEANUP_REMOVE_MOD_PYTHON=y \
+    #    AUTO_CLEANUP_REPLACE_FIREWALL_RULES=n \
+    #    AUTO_CLEANUP_RESTART_IPTABLES=n \
+    #    AUTO_CLEANUP_REPLACE_MYSQL_CONFIG=y \
+    #    AUTO_CLEANUP_RESTART_POSTFIX=n \
+    #    bash iRedMail.sh \
 #     && apt-get autoremove -y -q \
 #     && apt-get clean -y -q
 
