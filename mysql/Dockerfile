@@ -53,7 +53,15 @@ RUN yum install -y mariadb-server openssl \
     && tar jcf dumps/vmail.tar.bz2 /var/vmail \
     && rm -rf /var/vmail
 
+# At this point the layer contains services configured by iRedMail installer
+# However, some configurations need to be adapted, so the software composition
+# works under docker. That is the main reason for closing this layer, and opening
+# a new one in the next part of this Dockerfile
+
+# Installation of all static files (some of them are conf file overrides)
 ADD static_files /
+
+# Adaptation of configuration files, for services can be started
 
 
 
