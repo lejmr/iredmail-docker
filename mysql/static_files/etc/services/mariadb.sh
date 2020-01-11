@@ -11,48 +11,94 @@ if [ ! -e /etc/pki/tls/certs/iRedMail.crt ]; then
     sed -i 's/ssl-/#ssl-/' /etc/my.cnf
 fi
 
-# Create database filesystem
+# Create database filesystem if does not exist
 if [ ! -d /var/lib/mysql/mysql ]; then
     echo -n "*** Creating basic /var/lib/mysql filesystem.. "
     mysql_install_db  --datadir=/var/lib/mysql --skip-name-resolve --force
     chown mysql:mysql /var/lib/mysql -R
     echo "done."
-fi
 
-# Start temporary MariaDB instance
-mysqld_safe &
-mysqlPid=$!
-while ! mysqladmin ping --silent; do sleep 1; done
-echo "SELECT 1;"  | mysql || exit 1
+    # Start temporary MariaDB instance
+    mysqld_safe &
+    mysqlPid=$!
+    while ! mysqladmin ping --silent; do sleep 1; done
+    echo "SELECT 1;"  | mysql || exit 1
 
-### At this moment MariaDB is running, and is open for everyone.. needs to be hardened
-# Update root password
-if [ ! -z ${MYSQL_ROOT_PASSWORD} ]; then
-    echo -n "*** Configuring MySQL database.. "
-    if [ "${MYSQL_ROOT_PASSWORD}" != "$CP" ]; then
-        echo -n "(root password) "
-        cat << EOF | mysql
--- What's done in this file shouldn't be replicated
--- or products like mysql-fabric won't work
-SET @@SESSION.SQL_LOG_BIN=0;
-DELETE FROM mysql.user WHERE user NOT IN ('mysql.sys', 'mysqlxsys', 'root', 'mysql') OR host NOT IN ('localhost') ;
-SET PASSWORD FOR 'root'@'localhost'=PASSWORD('${MYSQL_ROOT_PASSWORD}') ;
-GRANT ALL ON *.* TO 'root'@'localhost' WITH GRANT OPTION ;
+    ### At this moment MariaDB is running, and is open for everyone.. needs to be hardened
+    # Update root password
+    if [ ! -z ${MYSQL_ROOT_PASSWORD} ]; then
+        echo "*** Configuring MySQL database.. "
+        if [ "${MYSQL_ROOT_PASSWORD}" != "$CP" ]; then
+            echo "(root password) "
+            cat << EOF | mysql
+    -- What's done in this file shouldn't be replicated
+    -- or products like mysql-fabric won't work
+    SET @@SESSION.SQL_LOG_BIN=0;
+    DELETE FROM mysql.user WHERE user NOT IN ('mysql.sys', 'mysqlxsys', 'root', 'mysql') OR host NOT IN ('localhost') ;
+    SET PASSWORD FOR 'root'@'localhost'=PASSWORD('${MYSQL_ROOT_PASSWORD}') ;
+    GRANT ALL ON *.* TO 'root'@'localhost' WITH GRANT OPTION ;
 
-CREATE USER 'root'@'${_grant_host}' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}' ;
-GRANT ALL ON *.* TO 'root'@'${_grant_host}' WITH GRANT OPTION ;
+    CREATE USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}' ;
+    GRANT ALL ON *.* TO 'root'@'%' WITH GRANT OPTION ;
 
-DROP DATABASE IF EXISTS test ;
-FLUSH PRIVILEGES ;
+    DROP DATABASE IF EXISTS test ;
+    FLUSH PRIVILEGES ;
 EOF
+        fi
+
+        cat << EOF > /root/.my.cnf
+            [client]
+            host=localhost
+            user=root
+            password="${MYSQL_ROOT_PASSWORD}"
+EOF
+
     fi
 
-    cat << EOF > /root/.my.cnf
-[client]
-host=localhost
-user=root
-password="${MYSQL_ROOT_PASSWORD}"
+    # Import initial structures
+    for i in $(ls /opt/iredmail/dumps/*.sql.gz); do 
+        dbname=$(basename $i | sed -s 's/.sql.gz//')
+        if [ "${dbname}" == "mysql" ]; then
+            continue
+        fi
+        echo "Importing $i into $dbname"; 
+        
+        # Create database
+        echo "CREATE DATABASE $dbname;" | mysql
+
+        # Import data
+        zcat $i | mysql $dbname
+    done
+
+    # Create and grant technical accounts
+    cat << EOF | mysql
+    -- TODO: set grant options properly
+    SET @@SESSION.SQL_LOG_BIN=0;
+    
+    -- vmail
+    CREATE USER 'vmail'@'localhost' IDENTIFIED BY '${VMAIL_DB_BIND_PASSWD}' ;
+    GRANT ALL ON *.* TO 'vmail'@'localhost' WITH GRANT OPTION ;
+    -- vmailadmin
+    CREATE USER 'vmailadmin'@'localhost' IDENTIFIED BY '${VMAIL_DB_ADMIN_PASSWD}' ;
+    GRANT ALL ON *.* TO 'vmailadmin'@'localhost' WITH GRANT OPTION ;
+    -- amavisd
+    CREATE USER 'amavisd'@'localhost' IDENTIFIED BY '${AMAVISD_DB_PASSWD}' ;
+    GRANT ALL ON *.* TO 'amavisd'@'localhost' WITH GRANT OPTION ;
+    -- iredadmin
+    CREATE USER 'iredadmin'@'localhost' IDENTIFIED BY '${IREDADMIN_DB_PASSWD}' ;
+    GRANT ALL ON *.* TO 'iredadmin'@'localhost' WITH GRANT OPTION ;
+    -- roundcube
+    CREATE USER 'roundcube'@'localhost' IDENTIFIED BY '${IREDADMIN_DB_PASSWD}' ;
+    GRANT ALL ON *.* TO 'roundcube'@'localhost' WITH GRANT OPTION ;
+    -- sogo
+    CREATE USER 'sogo'@'localhost' IDENTIFIED BY '${SOGO_DB_PASSWD}' ;
+    GRANT ALL ON *.* TO 'sogo'@'localhost' WITH GRANT OPTION ;
+    -- iredapd
+    CREATE USER 'iredapd'@'localhost' IDENTIFIED BY '${IREDAPD_DB_PASSWD}' ;
+    GRANT ALL ON *.* TO 'iredapd'@'localhost' WITH GRANT OPTION ;    
+    FLUSH PRIVILEGES ;
 EOF
+
 fi
 
 exit 0
