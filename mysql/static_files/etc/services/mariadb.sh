@@ -11,8 +11,9 @@ if [ ! -e /etc/pki/tls/certs/iRedMail.crt ]; then
     sed -i 's/ssl-/#ssl-/' /etc/my.cnf
 fi
 
-# Create database filesystem if does not exist
 if [ ! -d /var/lib/mysql/mysql ]; then
+    ### Create database filesystem if does not exist
+
     echo -n "*** Creating basic /var/lib/mysql filesystem.. "
     mysql_install_db  --datadir=/var/lib/mysql --skip-name-resolve --force
     chown mysql:mysql /var/lib/mysql -R
@@ -20,7 +21,6 @@ if [ ! -d /var/lib/mysql/mysql ]; then
 
     # Start temporary MariaDB instance
     mysqld_safe &
-    mysqlPid=$!
     while ! mysqladmin ping --silent; do sleep 1; done
     echo "SELECT 1;"  | mysql || exit 1
 
@@ -56,8 +56,8 @@ EOF
     fi
 
     # Import initial structures
-    for i in $(ls /opt/iredmail/dumps/*.sql.gz); do 
-        dbname=$(basename $i | sed -s 's/.sql.gz//')
+    for dbname in amavisd iredadmin iredapd roundcubemail vmail sogo; do 
+        i="/opt/iredmail/dumps/${dbname}.sql.gz"
         if [ "${dbname}" == "mysql" ]; then
             continue
         fi
@@ -99,51 +99,57 @@ EOF
     FLUSH PRIVILEGES ;
 EOF
 
+    # Create default domain
+    
+    # Legacy code
+    # # Update default email accounts
+    # echo "(postmaster) "
+    # DOMAIN=$(hostname -d)
+    # tmp=$(tempfile)
+    # mysqldump vmail mailbox alias domain domain_admins -r $tmp
+    # sed -i "s/DOMAIN/${DOMAIN}/g" $tmp
+
+
+    # # Update default email accounts
+    # if [ ! -z ${POSTMASTER_PASSWORD} ]; then
+    #     echo "(postmaster password) "
+    #     echo "UPDATE mailbox SET password='${POSTMASTER_PASSWORD}' WHERE username='postmaster@${DOMAIN}';" >> $tmp
+    # fi
+    # mysql vmail < $tmp > /dev/null 2>&1
+    # rm $tmp
+
+
+    # Stop temporary instance
+    mysqladmin shutdown
+else
+    ### Update passwords for technical accounts
+    # start temporary instance
+    mysqld_safe &
+    while ! mysqladmin ping --silent; do sleep 1; done
+    echo "SELECT 1;"  | mysql || exit 1
+
+    # Update credentials
+    # TODO: 
+    # LEGACY CODE:
+    # . /opt/iredmail/.cv
+    # tmp=$(tempfile)
+    # echo "DELETE FROM user WHERE Host='hostname.domain';" >> $tmp
+    # echo "SET PASSWORD FOR 'vmail'@'localhost' = PASSWORD('$VMAIL_DB_BIND_PASSWD');" >> $tmp
+    # echo "SET PASSWORD FOR 'vmailadmin'@'localhost' = PASSWORD('$VMAIL_DB_ADMIN_PASSWD');" >> $tmp
+    # echo "SET PASSWORD FOR 'amavisd'@'localhost' = PASSWORD('$AMAVISD_DB_PASSWD');" >> $tmp
+    # echo "SET PASSWORD FOR 'iredadmin'@'localhost' = PASSWORD('$IREDADMIN_DB_PASSWD');" >> $tmp
+    # echo "SET PASSWORD FOR 'roundcube'@'localhost' = PASSWORD('$RCM_DB_PASSWD');" >> $tmp
+    # echo "SET PASSWORD FOR 'sogo'@'localhost' = PASSWORD('$SOGO_DB_PASSWD');" >> $tmp
+    # #echo "SET PASSWORD FOR 'vmail'@'localhost' = PASSWORD('$SOGO_SIEVE_MASTER_PASSWD');" >> $tmp
+    # echo "SET PASSWORD FOR 'iredapd'@'localhost' = PASSWORD('$IREDAPD_DB_PASSWD');" >> $tmp
+    # echo "FLUSH PRIVILEGES;" >> $tmp
+    # echo "(service accounts) "
+    # mysql mysql < $tmp > /dev/null 2>&1
+
+    # stop temporary instance
+    mysqladmin shutdown
 fi
 
-exit 0
-
-
-# Update default email accounts
-echo "(postmaster) "
-DOMAIN=$(hostname -d)
-tmp=$(tempfile)
-mysqldump vmail mailbox alias domain domain_admins -r $tmp
-sed -i "s/DOMAIN/${DOMAIN}/g" $tmp
-
-
-# Update default email accounts
-if [ ! -z ${POSTMASTER_PASSWORD} ]; then
-    echo "(postmaster password) "
-    echo "UPDATE mailbox SET password='${POSTMASTER_PASSWORD}' WHERE username='postmaster@${DOMAIN}';" >> $tmp
-fi
-mysql vmail < $tmp > /dev/null 2>&1
-rm $tmp
-
-
-# Update passwords for service accounts
-. /opt/iredmail/.cv
-tmp=$(tempfile)
-echo "DELETE FROM user WHERE Host='hostname.domain';" >> $tmp
-echo "SET PASSWORD FOR 'vmail'@'localhost' = PASSWORD('$VMAIL_DB_BIND_PASSWD');" >> $tmp
-echo "SET PASSWORD FOR 'vmailadmin'@'localhost' = PASSWORD('$VMAIL_DB_ADMIN_PASSWD');" >> $tmp
-echo "SET PASSWORD FOR 'amavisd'@'localhost' = PASSWORD('$AMAVISD_DB_PASSWD');" >> $tmp
-echo "SET PASSWORD FOR 'iredadmin'@'localhost' = PASSWORD('$IREDADMIN_DB_PASSWD');" >> $tmp
-echo "SET PASSWORD FOR 'roundcube'@'localhost' = PASSWORD('$RCM_DB_PASSWD');" >> $tmp
-echo "SET PASSWORD FOR 'sogo'@'localhost' = PASSWORD('$SOGO_DB_PASSWD');" >> $tmp
-#echo "SET PASSWORD FOR 'vmail'@'localhost' = PASSWORD('$SOGO_SIEVE_MASTER_PASSWD');" >> $tmp
-echo "SET PASSWORD FOR 'iredapd'@'localhost' = PASSWORD('$IREDAPD_DB_PASSWD');" >> $tmp
-echo "FLUSH PRIVILEGES;" >> $tmp
-echo "(service accounts) "
-mysql mysql < $tmp > /dev/null 2>&1
-
-
-# Stop temporary MySQL
-killall -s TERM mysqld
-rm $tmp
-echo "done."
-
-
+# Normal database server start
 echo "*** Starting MySQL database.."
-touch /var/tmp/mysql.run
-exec /sbin/setuser mysql /usr/sbin/mysqld
+exec mysqld_safe
