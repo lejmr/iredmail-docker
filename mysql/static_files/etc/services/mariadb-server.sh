@@ -123,6 +123,8 @@ EOF
     mysqladmin shutdown
 else
     ### Update passwords for technical accounts
+    echo "*** Updating password credentials"
+    
     # start temporary instance
     mysqld_safe &
     while ! mysqladmin ping --silent; do sleep 1; done
@@ -152,4 +154,5 @@ fi
 
 # Normal database server start
 echo "*** Starting MySQL database.."
-exec mysqld_safe
+# exec mysqld_safe
+exec /usr/libexec/mysqld --basedir=/usr --datadir=/var/lib/mysql --plugin-dir=/usr/lib64/mysql/plugin --user=mysql --log-error=/var/log/mariadb.log --open-files-limit=65535 --pid-file=/var/run/mariadb/mariadb.pid --port=3306
