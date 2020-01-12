@@ -90,7 +90,7 @@ EOF
     CREATE USER 'iredadmin'@'localhost' IDENTIFIED BY '${IREDADMIN_DB_PASSWD}' ;
     GRANT ALL ON *.* TO 'iredadmin'@'localhost' WITH GRANT OPTION ;
     -- roundcube
-    CREATE USER 'roundcube'@'localhost' IDENTIFIED BY '${IREDADMIN_DB_PASSWD}' ;
+    CREATE USER 'roundcube'@'localhost' IDENTIFIED BY '${RCM_DB_PASSWD}' ;
     GRANT ALL ON *.* TO 'roundcube'@'localhost' WITH GRANT OPTION ;
     -- sogo
     CREATE USER 'sogo'@'localhost' IDENTIFIED BY '${SOGO_DB_PASSWD}' ;
