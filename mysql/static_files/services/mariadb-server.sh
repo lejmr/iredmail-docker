@@ -65,7 +65,7 @@ EOF
         echo "Importing $i into $dbname"; 
         
         # Create database
-        echo "CREATE DATABASE $dbname;" | mysql
+        echo "CREATE DATABASE $dbname COLLATE utf8_general_ci;" | mysql
 
         # Import data
         zcat $i | sed -e "s/DOMAIN/${DOMAIN}/g" | mysql $dbname
