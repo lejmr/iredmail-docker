@@ -5,4 +5,6 @@ while [ ! -e /var/lib/clamav/main.cvd ] && [ ! -e /var/lib/clamav/bytecode.cvd ]
     sleep 1
 done
 
-exec /usr/bin/freshclam -d --quiet
+logger "Checking for ClamAV updates"
+/usr/bin/freshclam
+sleep 3600
