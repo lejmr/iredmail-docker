@@ -1,10 +1,4 @@
 #!/bin/sh
-
-### Wait until postfix is started
-while ! nc -z localhost 25; do
-  sleep 1
-done
-
 sed -i "s/DOMAIN/${DOMAIN}/g" /etc/dovecot/dovecot.conf
 
 # Update password
