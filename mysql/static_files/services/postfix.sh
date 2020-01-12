@@ -58,6 +58,12 @@ trap_term_signal() {
     exit 0
 }
 
+trap_term_kill() {
+    echo "Stopping (from SIGKILL)"
+    kill -9 $(cat /var/spool/postfix/pid/master.pid)
+    exit 0
+}
+
 # Update MySQL password
 . /opt/iredmail/.cv
 sed -i "s/TEMP_VMAIL_DB_BIND_PASSWD/$VMAIL_DB_BIND_PASSWD/" /etc/postfix/mysql/catchall_maps.cf \
@@ -94,16 +100,23 @@ postmap /etc/postfix/mysql/catchall_maps.cf \
     /etc/postfix/mysql/domain_alias_catchall_maps.cf
 
 trap "trap_hup_signal" HUP
-trap "trap_term_signal" TERM
+trap "trap_term_signal" TERM EXIT
+trap "trap_term_kill" KILL
 
 echo "*** Starting postfix.."
 touch /var/tmp/postfix.run
-chown -R postfix /var/spool/postfix
+# chown -R postfix /var/spool/postfix
 postfix start
-pid=$!
 
-# Loop "wait" until the postfix master exits
-while wait $pid; test $? -gt 128
+while [ "$(pidof master)" != "" ] ;
 do
-    kill -0 $pid 2> /dev/null || break;
+    sleep 1
 done
+
+# I dont like postfix is started like this because postfix get PID 1 as parent
+# Even though its parent should be supervisord.
+# root       744     1  0 12:56 pts/0    00:00:00 /bin/sh /services/postfix.sh
+# root       834     1  0 12:56 ?        00:00:00 /usr/libexec/postfix/master -w
+# postfix    835   834  0 12:56 ?        00:00:00 pickup -l -t unix -u
+# postfix    836   834  0 12:56 ?        00:00:00 qmgr -l -t unix -u
+# postfix    839   834  0 12:56 ?        00:00:00 proxymap -t unix -u
