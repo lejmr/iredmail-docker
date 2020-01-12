@@ -61,6 +61,9 @@ RUN yum install -y mariadb-server openssl \
 # Installation of all static files (some of them are conf file overrides)
 ADD static_files /
 
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["supervisord"]
+
 # Adaptation of configuration files, for services can be started
 
 
