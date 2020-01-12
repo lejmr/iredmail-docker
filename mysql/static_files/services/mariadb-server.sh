@@ -71,6 +71,7 @@ EOF
     done
 
     # Create and grant technical accounts
+    . /opt/iredmail/.cv
     cat << EOF | mysql
     -- TODO: set grant options properly
     SET @@SESSION.SQL_LOG_BIN=0;

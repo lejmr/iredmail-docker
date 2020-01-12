@@ -45,12 +45,12 @@ RUN yum install -y mariadb-server openssl \
     && find /var/cache/yum/ -type f -exec rm -f {} \; \
     && rm /var/lib/mysql -rf \
     && rm -rf /var/lib/clamav/* \
+    && tar jcf dumps/vmail.tar.bz2 /var/vmail \
     && rm -rf /var/vmail/vmail1/DOMAIN \
     && rm -f /etc/ssl/private/iRedMail.key \
     && rm -f /etc/ssl/certs/iRedMail.crt \
     && rm -f /var/lib/dkim/DOMAIN.pem \
     # Prepare for first run
-    && tar jcf dumps/vmail.tar.bz2 /var/vmail \
     && rm -rf /var/vmail
 
 # At this point the layer contains services configured by iRedMail installer
