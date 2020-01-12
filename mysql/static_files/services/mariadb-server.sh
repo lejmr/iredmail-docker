@@ -56,6 +56,7 @@ EOF
     fi
 
     # Import initial structures
+    DOMAIN=$(hostname -d)
     for dbname in amavisd iredadmin iredapd roundcubemail vmail sogo; do 
         i="/opt/iredmail/dumps/${dbname}.sql.gz"
         if [ "${dbname}" == "mysql" ]; then
@@ -67,7 +68,7 @@ EOF
         echo "CREATE DATABASE $dbname;" | mysql
 
         # Import data
-        zcat $i | mysql $dbname
+        zcat $i | sed -e "s/DOMAIN/${DOMAIN}/g" | mysql $dbname
     done
 
     # Create and grant technical accounts
@@ -100,25 +101,11 @@ EOF
     FLUSH PRIVILEGES ;
 EOF
 
-    # Create default domain
-    
-    # Legacy code
-    # # Update default email accounts
-    # echo "(postmaster) "
-    # DOMAIN=$(hostname -d)
-    # tmp=$(tempfile)
-    # mysqldump vmail mailbox alias domain domain_admins -r $tmp
-    # sed -i "s/DOMAIN/${DOMAIN}/g" $tmp
-
-
-    # # Update default email accounts
-    # if [ ! -z ${POSTMASTER_PASSWORD} ]; then
-    #     echo "(postmaster password) "
-    #     echo "UPDATE mailbox SET password='${POSTMASTER_PASSWORD}' WHERE username='postmaster@${DOMAIN}';" >> $tmp
-    # fi
-    # mysql vmail < $tmp > /dev/null 2>&1
-    # rm $tmp
-
+    # Update default email accounts
+    if [ ! -z ${POSTMASTER_PASSWORD} ]; then
+        echo "(postmaster password) "
+        echo "UPDATE mailbox SET password='${POSTMASTER_PASSWORD}' WHERE username='postmaster@${DOMAIN}';" | mysql vmail
+    fi
 
     # Stop temporary instance
     mysqladmin shutdown
