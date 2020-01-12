@@ -119,22 +119,18 @@ else
     echo "SELECT 1;"  | mysql || exit 1
 
     # Update credentials
-    # TODO: 
-    # LEGACY CODE:
-    # . /opt/iredmail/.cv
-    # tmp=$(tempfile)
-    # echo "DELETE FROM user WHERE Host='hostname.domain';" >> $tmp
-    # echo "SET PASSWORD FOR 'vmail'@'localhost' = PASSWORD('$VMAIL_DB_BIND_PASSWD');" >> $tmp
-    # echo "SET PASSWORD FOR 'vmailadmin'@'localhost' = PASSWORD('$VMAIL_DB_ADMIN_PASSWD');" >> $tmp
-    # echo "SET PASSWORD FOR 'amavisd'@'localhost' = PASSWORD('$AMAVISD_DB_PASSWD');" >> $tmp
-    # echo "SET PASSWORD FOR 'iredadmin'@'localhost' = PASSWORD('$IREDADMIN_DB_PASSWD');" >> $tmp
-    # echo "SET PASSWORD FOR 'roundcube'@'localhost' = PASSWORD('$RCM_DB_PASSWD');" >> $tmp
-    # echo "SET PASSWORD FOR 'sogo'@'localhost' = PASSWORD('$SOGO_DB_PASSWD');" >> $tmp
-    # #echo "SET PASSWORD FOR 'vmail'@'localhost' = PASSWORD('$SOGO_SIEVE_MASTER_PASSWD');" >> $tmp
-    # echo "SET PASSWORD FOR 'iredapd'@'localhost' = PASSWORD('$IREDAPD_DB_PASSWD');" >> $tmp
-    # echo "FLUSH PRIVILEGES;" >> $tmp
-    # echo "(service accounts) "
-    # mysql mysql < $tmp > /dev/null 2>&1
+    . /opt/iredmail/.cv
+    cat << EOF | mysql 
+    SET PASSWORD FOR 'vmail'@'localhost' = PASSWORD('$VMAIL_DB_BIND_PASSWD');
+    SET PASSWORD FOR 'vmailadmin'@'localhost' = PASSWORD('$VMAIL_DB_ADMIN_PASSWD');
+    SET PASSWORD FOR 'amavisd'@'localhost' = PASSWORD('$AMAVISD_DB_PASSWD');
+    SET PASSWORD FOR 'iredadmin'@'localhost' = PASSWORD('$IREDADMIN_DB_PASSWD');
+    SET PASSWORD FOR 'roundcube'@'localhost' = PASSWORD('$RCM_DB_PASSWD');
+    SET PASSWORD FOR 'sogo'@'localhost' = PASSWORD('$SOGO_DB_PASSWD');
+    SET PASSWORD FOR 'vmail'@'localhost' = PASSWORD('$SOGO_SIEVE_MASTER_PASSWD');
+    SET PASSWORD FOR 'iredapd'@'localhost' = PASSWORD('$IREDAPD_DB_PASSWD');
+    FLUSH PRIVILEGES;
+EOF
 
     # stop temporary instance
     mysqladmin shutdown
