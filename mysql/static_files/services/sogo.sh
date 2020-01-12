@@ -26,4 +26,4 @@ sed -i "s/TEMP_SOGO_DB_PASSWD/$SOGO_DB_PASSWD/g" /etc/sogo/sogo.conf
 sed -i "s/TEMP_SOGO_SIEVE_MASTER_PASSWD/$SOGO_SIEVE_MASTER_PASSWD/g" /etc/sogo/sieve.cred
 
 # Start Sogo
-suexec sogo /usr/sbin/sogod ${DAEMON_OPTS}
+gosu sogo /usr/sbin/sogod ${DAEMON_OPTS}

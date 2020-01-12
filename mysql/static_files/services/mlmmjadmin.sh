@@ -1,11 +1,6 @@
 #!/bin/sh
 
 ### Wait until postfix is started
-while [ ! -f /var/tmp/postfix.run ]; do
-  sleep 1
-done
-
-
 echo "*** Starting mlmmjadmin.."
 . /opt/iredmail/.cv
 if [ ! -z ${VMAIL_DB_ADMIN_PASSWD} ]; then 
@@ -22,4 +17,4 @@ logger DEBUG mlmmjadmin
 /bin/mkdir -p /var/run/mlmmjadmin
 chown mlmmj:mlmmj /var/run/mlmmjadmin
 /bin/chmod 0755 /var/run/mlmmjadmin
-exec /usr/bin/uwsgi --ini /opt/mlmmjadmin/rc_scripts/uwsgi/debian.ini --pidfile /var/run/mlmmjadmin/mlmmjadmin.pid
+exec /usr/sbin/uwsgi --ini /opt/mlmmjadmin/rc_scripts/uwsgi/debian.ini --pidfile /var/run/mlmmjadmin/mlmmjadmin.pid
