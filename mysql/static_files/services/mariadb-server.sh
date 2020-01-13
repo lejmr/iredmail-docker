@@ -112,7 +112,14 @@ EOF
 else
     ### Update passwords for technical accounts
     echo "*** Updating password credentials"
-    
+
+    cat << EOF > /root/.my.cnf
+            [client]
+            host=localhost
+            user=root
+            password="${MYSQL_ROOT_PASSWORD}"
+EOF
+
     # start temporary instance
     mysqld_safe &
     while ! mysqladmin ping --silent; do sleep 1; done
