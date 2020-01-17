@@ -43,5 +43,5 @@ sed -i "s/TEMP_SOGO_SIEVE_MASTER_PASSWD/$SOGO_SIEVE_MASTER_PASSWD/g" /etc/sogo/s
 
 
 # Start Sogo
-#gosu sogo 
 exec /usr/sbin/sogod ${DAEMON_OPTS}
+# exec gosu sogo /usr/sbin/sogod ${DAEMON_OPTS}
