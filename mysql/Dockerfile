@@ -15,6 +15,8 @@ ADD static_files/opt/iredmail /opt/iredmail
 
 # All-in-one installation
 RUN yum install -y mariadb-server openssl \
+    && curl -o /usr/bin/gosu -SL "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-amd64" \
+    && chmod +x /usr/bin/gosu \
     # Start temporary MariaDB server
     && mysql_install_db  --datadir=/var/lib/mysql --skip-name-resolve --force \
     && chown mysql:mysql /var/lib/mysql -R \
@@ -61,8 +63,6 @@ RUN yum install -y mariadb-server openssl \
 
 # Installation of all static files (some of them are conf file overrides)
 ADD static_files /
-RUN chown sogo:sogo /etc/sogo \
-    && chmod u+w /etc/sogo/sogo.conf /etc/sogo/sieve.cred
 
 # Starting mechanism
 ENTRYPOINT ["/entrypoint.sh"]

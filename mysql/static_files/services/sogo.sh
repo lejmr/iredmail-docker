@@ -2,7 +2,7 @@
 logger "*** Starting sogo..."
 
 # Wait for MariaDB is up
-# while ! mysqladmin ping --silent; do sleep 1; done
+while ! mysqladmin ping --silent; do sleep 1; done
 
 # Load default variables
 PIDFILE=/var/run/sogo/sogo.pid
@@ -43,5 +43,5 @@ sed -i "s/TEMP_SOGO_SIEVE_MASTER_PASSWD/$SOGO_SIEVE_MASTER_PASSWD/g" /etc/sogo/s
 
 
 # Start Sogo
-exec /usr/sbin/sogod ${DAEMON_OPTS}
-# exec gosu sogo /usr/sbin/sogod ${DAEMON_OPTS}
+# exec /usr/sbin/sogod ${DAEMON_OPTS}
+exec gosu sogo /usr/sbin/sogod ${DAEMON_OPTS}
