@@ -1,6 +1,6 @@
 # iRedMail Docker Container #
 
-iRedMail allows to deploy an OPEN SOURCE, FULLY FLEDGED, FULL-FEATURED mail server in several minutes, for free. If several minutes is long time then this docker container can reduce help you and deploy your mail server in seconds.
+iRedMail allows to deploy an OPEN SOURCE, FULLY FLEDGED, FULL-FEATURED mail server in several minutes, for free. If several minutes is long time then this docker container can reduce the deployment time and help you to get a mail server in matter seconds.
 
 Current version of container uses MySQL for accounts saving. In the future the LDAP can be used, so pull requests are welcome. Container contains all components (Postfix, Dovecot, Fail2ban, ClamAV, Roundcube, and SoGo) and MySQL server. The hostname of the mail server can be set using the normal docker methods (```docker run -h <host>``` or setting 'hostname' in a docker compose file). In order to customize the container several environmental variables are allowed:
 
@@ -18,7 +18,7 @@ Container is prepared to handle data as persistent using mounted folders for dat
 With all information prepared, let's test your new iRedMail server:
 
 ```
-docker run --privileged -p 80:80 -p 443:443 \
+docker run -p 80:80 -p 443:443 \
            -h HOSTNAME.DOMAIN \
            -e "MYSQL_ROOT_PASSWORD=password" \
            -e "SOGO_WORKERS=1" \
@@ -31,45 +31,5 @@ docker run --privileged -p 80:80 -p 443:443 \
            --name=iredmail lejmr/iredmail:mysql-latest
 
 ```
-
-## How to upgrade from 0.9.7 to 0.9.8
-iRedMail v0.9.8 changes structure of its persistent store, for easier email alias management:
- * http://www.iredmail.org/docs/upgrade.iredmail.0.9.7-0.9.8.html#mysqlmariadb-backend-special
-
-In order to apply changes upgrade process is as follows:
-
- - Stop and remove current container ```docker rm -f iredmail```
- - Update image ```docker pull lejmr/iredmail:mysql-0.9.8```
- - Start iRedmail from newer image
- - Initiate upgrade ```docker exec -ti iredmail /sbin/update-iredmail```
- - Restart container ```docker restart iredmail```
-  
- 
-## How to upgrade from 0.9.6 to 0.9.7
-iRedMail v0.9.7 changes structure of its persistent store, for easier email alias management:
- * http://www.iredmail.org/docs/upgrade.iredmail.0.9.6-0.9.7.html#mysqlmariadb-backend-special
-
-In order to apply changes upgrade process is as follows:
-
- - Stop and remove current container ```docker rm -f iredmail```
- - Update image ```docker pull lejmr/iredmail:mysql-0.9.7```
- - Start iRedmail from newer image
- - Initiate upgrade ```docker exec -ti iredmail /sbin/update-iredmail```
-
-
-## How to upgrade from 0.9.5-1 to 0.9.6
-iRedMail v0.9.6 changes structure of its persistent store, so as changes format of SoGo cache:
- * http://www.iredmail.org/docs/upgrade.sogo.combined.sql.tables.html
- * http://www.iredmail.org/docs/upgrade.iredmail.0.9.5.1-0.9.6.html#mysqlmariadb-backend-special
-
-In order to apply changes upgrade process is as follows:
-
- - Stop and remove current container ```docker rm -f iredmail```
- - Update image ```docker pull lejmr/iredmail:mysql-0.9.6```
- - Start iRedmail from newer image
- - Initiate upgrade ```docker exec -ti iredmail /sbin/update-iredmail```
- 
- 
-
 
 
