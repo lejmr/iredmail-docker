@@ -16,5 +16,5 @@ fi
 
 # Start Spamassasin
 /sbin/portrelease spamd
-/usr/bin/spamd --pidfile $PIDFILE $SPAMDOPTIONS
+exec /usr/bin/spamd --pidfile $PIDFILE $SPAMDOPTIONS
 
