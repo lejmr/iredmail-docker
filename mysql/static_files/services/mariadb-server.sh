@@ -3,6 +3,42 @@
 export HOME="/root"
 export USER="root"
 
+
+# https://stackoverflow.com/questions/4023830/how-to-compare-two-strings-in-dot-separated-version-format-in-bash
+vercomp () {
+    if [[ $1 == $2 ]]
+    then
+        return 0
+    fi
+    local IFS=.
+    local i ver1=($1) ver2=($2)
+    # fill empty fields in ver1 with zeros
+    for ((i=${#ver1[@]}; i<${#ver2[@]}; i++))
+    do
+        ver1[i]=0
+    done
+    for ((i=0; i<${#ver1[@]}; i++))
+    do
+        if [[ -z ${ver2[i]} ]]
+        then
+            # fill empty fields in ver2 with zeros
+            ver2[i]=0
+        fi
+        if ((10#${ver1[i]} > 10#${ver2[i]}))
+        then
+            return 1
+        fi
+        if ((10#${ver1[i]} < 10#${ver2[i]}))
+        then
+            return 2
+        fi
+    done
+    return 0
+}
+
+# Load global variables
+. /opt/iredmail/conf/global
+
 # Remove default .my.cnf file
 test /root/.my.cnf && rm /root/.my.cnf* -f
 
@@ -107,8 +143,19 @@ EOF
         echo "UPDATE mailbox SET password='${POSTMASTER_PASSWORD}' WHERE username='postmaster@${DOMAIN}';" | mysql vmail
     fi
 
-    # Stop temporary instance
-    mysqladmin shutdown
+    # Create versioning table
+    cat << EOF | mysql vmail
+-- CREATE TABLE
+CREATE TABLE versions (
+    `component` varchar(120) NOT NULL,
+    `version` varchar(20) NOT NULL,
+    PRIMARY KEY(`component`)
+);
+
+-- INSERT iredmail version 
+INSERT INTO versions VALUES('iredmail', '${PROG_VERSION}');
+EOF
+
 else
     ### Update passwords for technical accounts
     echo "*** Updating password credentials"
@@ -137,10 +184,66 @@ EOF
     SET PASSWORD FOR 'iredapd'@'localhost' = PASSWORD('$IREDAPD_DB_PASSWD');
     FLUSH PRIVILEGES;
 EOF
-
-    # stop temporary instance
-    mysqladmin shutdown
 fi
+
+# Perform database update
+# Make sure version table is installed and retrive current version from DB. This check is useful for 
+# upgrades from older versions where versions table is not available. In such table is installed while
+# current iredmail version is inserted. Having an older versions, one can simply update the version in
+# versions table and restart iredmail container. This way all migrations get applied
+cat << EOF | mysql -d vmail
+-- CREATE TABLE if exists
+CREATE TABLE IF NOT EXISTS `versions` (
+    `component` varchar(120) NOT NULL,
+    `version` varchar(20) NOT NULL,
+    PRIMARY KEY(`component`)
+);
+EOF
+
+# Get iredmail's version off database (if empty)
+CUR_VERSION=`mysql vmail -NB -e "SELECT version from versions WHERE component = 'iredmail';"`
+
+# Install db migratios in case versions table returns current version. Otherwise 
+# nothing happens. Empty variable can only happen when versions table is just 
+# installed.
+if [ "x$CUR_VERSION" != "x"]; then
+    
+    echo "** Installing database migrations"
+
+    # Install all migrations of /opt/iredmail/migrations
+    for db in `ls /opt/iredmail/migrations/`; do
+    
+        # Skip migrations if not present
+        [ -d /opt/iredmail/migrations/${db} ] || continue
+
+        # Walk through all migration files
+        for migration in `ls /opt/iredmail/migrations/${db}/*_*__*.sql | sort -n`; do
+            fn = `basename ${migration}`
+            ver = `echo ${fn} | awk -F_ '{print $2}'`
+
+            # Compare versions
+            vercomp $ver $CUR_VERSION
+            if [ "x$?" == "x1"]; then
+                # This migration script holds newer migration than current version, so installing
+                echo "** Installing ${migration}"
+                
+                # Install migration file
+                mysql ${db} < ${migration}
+            fi
+        done
+    done
+fi
+
+# Update version in migration table
+cat << EOF | mysql vmail
+REPLACE versions 
+SET component = 'iredmail', 
+    version = '${PROG_VERSION}'
+WHERE component = 'iredmail';
+EOF
+
+# stop temporary instance
+mysqladmin shutdown
 
 # Normal database server start
 echo "*** Starting MySQL database.."

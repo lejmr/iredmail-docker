@@ -2,7 +2,7 @@ FROM centos:7
 MAINTAINER Miloš Kozák <milos.kozak@lejmr.com>
 
 # Suporting software versions
-ARG IREDMAIL_VERSION=1.21
+ARG IREDMAIL_VERSION=1.3
 ARG GOSU_VERSION=1.11
 
 # Default values changable at startup
