@@ -192,38 +192,38 @@ fi
 # current iredmail version is inserted. Having an older versions, one can simply update the version in
 # versions table and restart iredmail container. This way all migrations get applied
 cat << EOF | mysql -d vmail
--- CREATE TABLE if exists
+-- CREATE TABLE if not exists
 CREATE TABLE IF NOT EXISTS `versions` (
     `component` varchar(120) NOT NULL,
     `version` varchar(20) NOT NULL,
     PRIMARY KEY(`component`)
 );
+-- Insert initial version
+INSERT IGNORE INTO versions VALUES('iredmail', '${PROG_VERSION}');
 EOF
 
 # Get iredmail's version off database (if empty)
 CUR_VERSION=`mysql vmail -NB -e "SELECT version from versions WHERE component = 'iredmail';"`
+echo "*** Current database schema version as of ${CUR_VERSION}"
 
 # Install db migratios in case versions table returns current version. Otherwise 
 # nothing happens. Empty variable can only happen when versions table is just 
 # installed.
-if [ "x$CUR_VERSION" != "x"]; then
-    
-    echo "** Installing database migrations"
+if [ "x$CUR_VERSION" != "x" ]; then
+
+    echo "*** Installing database migrations"
 
     # Install all migrations of /opt/iredmail/migrations
     for db in `ls /opt/iredmail/migrations/`; do
     
-        # Skip migrations if not present
-        [ -d /opt/iredmail/migrations/${db} ] || continue
-
         # Walk through all migration files
         for migration in `ls /opt/iredmail/migrations/${db}/*_*__*.sql | sort -n`; do
-            fn = `basename ${migration}`
-            ver = `echo ${fn} | awk -F_ '{print $2}'`
-
+            fn=`basename ${migration}`
+            ver=`echo ${fn} | awk -F_ '{print $2}'`
+            
             # Compare versions
             vercomp $ver $CUR_VERSION
-            if [ "x$?" == "x1"]; then
+            if [ "x$?" == "x1" ]; then
                 # This migration script holds newer migration than current version, so installing
                 echo "** Installing ${migration}"
                 
@@ -236,7 +236,7 @@ fi
 
 # Update version in migration table
 cat << EOF | mysql vmail
-REPLACE versions 
+UPDATE versions 
 SET component = 'iredmail', 
     version = '${PROG_VERSION}'
 WHERE component = 'iredmail';
