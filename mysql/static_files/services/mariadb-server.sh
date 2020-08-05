@@ -191,12 +191,12 @@ fi
 # upgrades from older versions where versions table is not available. In such table is installed while
 # current iredmail version is inserted. Having an older versions, one can simply update the version in
 # versions table and restart iredmail container. This way all migrations get applied
-cat << EOF | mysql -d vmail
+cat << EOF | mysql vmail
 -- CREATE TABLE if not exists
-CREATE TABLE IF NOT EXISTS `versions` (
-    `component` varchar(120) NOT NULL,
-    `version` varchar(20) NOT NULL,
-    PRIMARY KEY(`component`)
+CREATE TABLE IF NOT EXISTS \`versions\` (
+    \`component\` varchar(120) NOT NULL,
+    \`version\` varchar(20) NOT NULL,
+    PRIMARY KEY(\`component\`)
 );
 -- Insert initial version
 INSERT IGNORE INTO versions VALUES('iredmail', '${PROG_VERSION}');
