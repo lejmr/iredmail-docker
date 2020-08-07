@@ -40,7 +40,7 @@ RUN yum install -y mariadb-server openssl \
        AUTO_CLEANUP_REPLACE_MYSQL_CONFIG=y \
        AUTO_CLEANUP_RESTART_POSTFIX=n \
        bash iRedMail.sh \
-    && yum install -y supervisor \
+    && yum install -y supervisor MySQL-python python-webpy \
     # Remove all dependencies and all caches
     && mkdir dumps \
     && for d in amavisd iredadmin iredapd roundcubemail sogo vmail mysql; do mysqldump $d | gzip -c > dumps/${d}.sql.gz; done \
