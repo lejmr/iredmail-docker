@@ -54,7 +54,7 @@ if [ -f ${PIDFILE} ]; then
 fi
 
 # Start iredapd
-python ${BINPATH}
+python3 ${BINPATH}
 
 
 while [ ! -f /var/run/iredapd.pid ]

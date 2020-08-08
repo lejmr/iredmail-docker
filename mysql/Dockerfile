@@ -2,7 +2,7 @@ FROM centos:7
 MAINTAINER Miloš Kozák <milos.kozak@lejmr.com>
 
 # Suporting software versions
-ARG IREDMAIL_VERSION=1.1
+ARG IREDMAIL_VERSION=1.3.1
 ARG GOSU_VERSION=1.12
 
 # Default values changable at startup
@@ -40,7 +40,7 @@ RUN yum install -y mariadb-server openssl \
        AUTO_CLEANUP_REPLACE_MYSQL_CONFIG=y \
        AUTO_CLEANUP_RESTART_POSTFIX=n \
        bash iRedMail.sh \
-    && yum install -y supervisor \
+    && yum install -y supervisor MySQL-python python-webpy \
     # Remove all dependencies and all caches
     && mkdir dumps \
     && for d in amavisd iredadmin iredapd roundcubemail sogo vmail mysql; do mysqldump $d | gzip -c > dumps/${d}.sql.gz; done \
