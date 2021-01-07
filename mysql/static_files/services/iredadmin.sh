@@ -10,9 +10,9 @@ sed -i "s/DOMAIN/${DOMAIN}/g" /opt/www/iredadmin/settings.py
 
 # Starting procedure based on SystemD service:
 # /lib/systemd/system/iredadmin.service
-mkdir /var/run/iredadmin
+mkdir -p /var/run/iredadmin
 chown iredadmin:iredadmin /var/run/iredadmin
 chmod 0755 /var/run/iredadmin
 
 # start - listens on tcp/7791
-exec /usr/sbin/uwsgi --ini /opt/www/iredadmin/rc_scripts/uwsgi/rhel.ini --pidfile /var/run/iredadmin/iredadmin.pid
+exec /usr/sbin/uwsgi --ini /opt/www/iredadmin/rc_scripts/uwsgi/rhel7.ini --pidfile /var/run/iredadmin/iredadmin.pid
