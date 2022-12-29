@@ -1,0 +1,3 @@
+1. Make a backup of your DB just in case
+2. Build your image
+3. Run the SQL script first to update the Database on you current iRedMail
