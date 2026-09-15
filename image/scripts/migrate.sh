@@ -12,7 +12,7 @@ MIGRATIONS_DIR=/usr/local/lib/iredmail/migrations
 ls "$MIGRATIONS_DIR"/*.sql >/dev/null 2>&1 || exit 0
 
 mysqld_safe --datadir=/data/mysql --skip-networking=0 --bind-address=127.0.0.1 &
-for i in $(seq 1 60); do mysqladmin ping --silent 2>/dev/null && break; sleep 1; done
+for _ in $(seq 1 60); do mysqladmin ping --silent 2>/dev/null && break; sleep 1; done
 
 MYSQL_ROOT_PW="$(secret mysql_root.pw)"
 current="$(mysql -uroot -p"$MYSQL_ROOT_PW" -N vmail -e \

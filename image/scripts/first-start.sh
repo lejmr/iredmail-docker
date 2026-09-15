@@ -28,7 +28,7 @@ mariadb-install-db --datadir=/data/mysql --user=mysql --skip-name-resolve >/dev/
 chown vmail:vmail /data/vmail
 
 mysqld_safe --datadir=/data/mysql --skip-networking=0 --bind-address=127.0.0.1 &
-for i in $(seq 1 60); do mysqladmin ping --silent 2>/dev/null && break; sleep 1; done
+for _ in $(seq 1 60); do mysqladmin ping --silent 2>/dev/null && break; sleep 1; done
 mysqladmin ping
 
 MYSQL_ROOT_PW="$(secret mysql_root.pw)"

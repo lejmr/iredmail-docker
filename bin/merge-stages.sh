@@ -69,7 +69,7 @@ grep -v '^\s*$' "$STAGES_FILE" | grep -v '^\s*#' | while IFS='|' read -r branch 
   echo "$branch $pr" >> "$LOG"
   echo "PR #$pr ready, waiting for checks"
   sleep 30
-  for i in $(seq 1 60); do
+  for _ in $(seq 1 60); do
     out=$(gh pr checks "$pr" 2>&1)
     if echo "$out" | grep -qi "no checks"; then sleep 15; continue; fi
     if echo "$out" | grep -qE "pending|queued|in_progress"; then sleep 15; continue; fi
