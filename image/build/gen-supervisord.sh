@@ -37,14 +37,14 @@ for svc in $SERVICES; do
     elif [ "$svc" = "mariadb" ]; then
         execstart="/usr/sbin/mariadbd --user=mysql"
     else
-        execstart="$(grep -m1 '^ExecStart=' "$unit" | sed 's/^ExecStart=//')"
+        execstart="$(grep -m1 '^ExecStart=' "$unit" | sed 's/^ExecStart=//' || true)"
         # strip a leading '-' (systemd: ignore exit status marker)
         execstart="${execstart#-}"
     fi
     [ -z "$execstart" ] && continue
 
-    user="$(grep -m1 '^User=' "$unit" | sed 's/^User=//')"
-    workdir="$(grep -m1 '^WorkingDirectory=' "$unit" | sed 's/^WorkingDirectory=//')"
+    user="$(grep -m1 '^User=' "$unit" | sed 's/^User=//' || true)"
+    workdir="$(grep -m1 '^WorkingDirectory=' "$unit" | sed 's/^WorkingDirectory=//' || true)"
 
     priority=$((priority + 10))
     {
