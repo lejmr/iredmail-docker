@@ -147,15 +147,36 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN set -eux; \
     sed -i "s/^bind-address.*/bind-address = 127.0.0.1/" /etc/mysql/mariadb.conf.d/50-server.cnf \
         || echo 'bind-address = 127.0.0.1' >> /etc/mysql/mariadb.conf.d/50-server.cnf; \
-    sed -i '1a listen = 127.0.0.1, ::1' /etc/dovecot/dovecot.conf; \
-    printf '\nservice imap-login {\n  inet_listener imap {\n    listen = *, ::\n  }\n  inet_listener imaps {\n    listen = *, ::\n  }\n}\n' \
+    sed -i '1a listen = 127.0.0.1' /etc/dovecot/dovecot.conf; \
+    printf '\nservice imap-login {\n  inet_listener imap {\n    listen = *\n  }\n  inet_listener imaps {\n    listen = *\n  }\n}\n' \
         >> /etc/dovecot/dovecot.conf; \
-    printf '\nservice pop3-login {\n  inet_listener pop3 {\n    listen = 127.0.0.1, ::1\n  }\n  inet_listener pop3s {\n    listen = 127.0.0.1, ::1\n  }\n}\nservice managesieve-login {\n  inet_listener sieve {\n    listen = 127.0.0.1, ::1\n  }\n}\n' \
+    printf '\nservice pop3-login {\n  inet_listener pop3 {\n    listen = 127.0.0.1\n  }\n  inet_listener pop3s {\n    listen = 127.0.0.1\n  }\n}\nservice managesieve-login {\n  inet_listener sieve {\n    listen = 127.0.0.1\n  }\n}\n' \
         >> /etc/dovecot/dovecot.conf; \
     doveconf -n >/dev/null; \
     grep -q '^\$inet_socket_bind' /etc/amavis/conf.d/50-user 2>/dev/null || \
         echo '$inet_socket_bind = "127.0.0.1";' >> /etc/amavis/conf.d/50-user; \
-    grep -rl "^bind_host" /opt/iredapd/settings.py 2>/dev/null | xargs -r sed -i "s/^bind_host.*/bind_host = '127.0.0.1'/" || true
+    grep -rl "^bind_host" /opt/iredapd/settings.py 2>/dev/null | xargs -r sed -i "s/^bind_host.*/bind_host = '127.0.0.1'/" || true; \
+    # This build host (Colima/Rosetta) has no IPv6 - '::'/'::1' listeners
+    # made dovecot fail to start ("Fatal: Failed to start listeners").
+    # IPv4-only is also all row 16 needs.
+    :
+
+# --- Remove iRedMail's own wildcard DKIM key from amavisd.conf ----------
+# The installer wrote a `dkim_key('build.invalid', ...)` line plus a
+# catch-all `@dkim_signature_options_bysender_maps` ('.' => ...) into
+# conf.d/50-user for the throw-away build-time domain. `admin domain add`
+# (image/scripts/common.sh: regenerate_amavis_dkim_include) fully
+# regenerates a *separate* conf.d file with one dkim_key per real domain
+# (#50/#92 - no wildcard key) - so the installer's own lines must be
+# removed here, or amavis fails to start ("dkim_key: selector dkim for
+# domain X already in use") the first time a real domain reuses that
+# rewritten placeholder text (first-start.sh's hostname/domain rewiring
+# turns 'build.invalid' into the real domain in every file, this one
+# included).
+RUN sed -i \
+    -e "/^dkim_key('build.invalid'/d" \
+    -e '/^@dkim_signature_options_bysender_maps = ({$/,/^});$/d' \
+    /etc/amavis/conf.d/50-user
 
 # --- Runtime dependencies (supervisord, no fail2ban / netdata) ---------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

@@ -13,7 +13,7 @@ set -euo pipefail
 OUT=/etc/supervisor/conf.d/iredmail.conf
 UNIT_DIRS="/lib/systemd/system /usr/lib/systemd/system /etc/systemd/system"
 # order = start order (priority)
-SERVICES="mariadb memcached postfix dovecot clamav-daemon clamav-freshclam amavis spamassassin iredapd sogo iredadmin nginx"
+SERVICES="rsyslog mariadb memcached postfix dovecot clamav-daemon clamav-freshclam amavis spamassassin iredapd sogo iredadmin nginx"
 
 find_unit() {
     for d in $UNIT_DIRS; do
@@ -35,6 +35,13 @@ for svc in $SERVICES; do
         execstart="/usr/sbin/nginx -g 'daemon off;'"
     elif [ "$svc" = "mariadb" ]; then
         execstart="/usr/sbin/mariadbd --user=mysql"
+    elif [ "$svc" = "postfix" ]; then
+        # ponytail: postfix.service's ExecStart is `postfix debian-systemd-start`,
+        # a wrapper that refuses to run except under systemd ("the Postfix
+        # mail system is started through systemd but not under systemd?").
+        # `start-fg` is postfix's own supported foreground mode (postfix(1)),
+        # not re-derived from the unit.
+        execstart="/usr/sbin/postfix start-fg"
     elif [ "$svc" = "sogo" ]; then
         # ponytail: Debian's sogo package ships only /etc/init.d/sogo, no
         # systemd unit to read ExecStart= from - same DAEMON_OPTS as that
