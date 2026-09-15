@@ -21,7 +21,9 @@ file supplies what the skill leaves to the project.
 - **Decisions (2026-09-15):** Debian 13 slim base; Rspamd instead of
   Amavis+SpamAssassin+ClamAV where the phase allows (ClamAV optional);
   MariaDB only while SOGo needs it; `admin` CLI inside the image is the
-  management contract; images on GHCR and Docker Hub, tagged by date, rebuilt
+  management contract for the tests, and a web admin UI (phase A: iRedAdmin;
+  phase B: Postfixadmin or a minimal page - whichever passes row 20) is
+  required for the maintainer; images on GHCR and Docker Hub, tagged by date, rebuilt
   weekly for security updates; arm64 not before phase B; old issues closed
   after the first release with one factual sentence each, feature requests
   mapped to acceptance rows.

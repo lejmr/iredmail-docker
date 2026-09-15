@@ -32,6 +32,7 @@ to him.
 | 16 | Nothing is exposed that need not be | port scan of the container; capabilities | only 25, 465, 587, 993, 443 (+80 for ACME) open; runs without `--privileged` | machine |
 | 17 | Two servers built from the same image have different DKIM keys | compare the DKIM DNS record printed by A and by B | different public keys (#17) | machine |
 | 18 | I can override a config file and it survives an upgrade | drop a file into the `overrides/` volume; restart; upgrade | the override is in effect (observable behaviour, e.g. a Postfix banner string), before and after the upgrade | machine |
-| 19 | It works behind my reverse proxy | nginx-proxy in front with `X-Forwarded-*` | HTTPS web (if any) and ActiveSync work through the proxy | machine |
+| 19 | It works behind my reverse proxy | nginx-proxy in front with `X-Forwarded-*` | HTTPS web and ActiveSync work through the proxy | machine |
+| 20 | I manage domains, users and quotas in a web UI (the operations of rows 2-5) | HTTPS: log in as the admin, add a domain and a user through the UI's own forms/API | the new user can log in over IMAP; `admin domain list` shows the domain; the DKIM record for the domain is shown in the UI | machine (HTTP) + maintainer (it is usable on a phone) |
 
-Out of scope: LDAP, webmail as a requirement, OAuth2, Kubernetes, arm64 in phase A.
+Out of scope: LDAP, webmail as a requirement (the admin web UI is in scope - row 20), OAuth2, Kubernetes, arm64 in phase A.
