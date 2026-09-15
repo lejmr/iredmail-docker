@@ -1,2 +1,5 @@
 *~
 tmp*
+.venv-test/
+test-results/
+__pycache__/

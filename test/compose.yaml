@@ -1,0 +1,72 @@
+x-image: &image ${IMAGE:-iredmail/mariadb:stable}
+
+x-common: &common
+  image: *image
+  platform: linux/amd64
+  # ponytail: the official image has no supervisord "all healthy" signal of
+  # its own; probe the three ports the suite actually needs (SMTP, IMAP, HTTPS).
+  healthcheck:
+    test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/25' && bash -c '</dev/tcp/127.0.0.1/993' && bash -c '</dev/tcp/127.0.0.1/443'"]
+    interval: 5s
+    timeout: 5s
+    retries: 40
+    start_period: 180s
+  volumes:
+    - ../test/admin-shims/iredmail-official.sh:/usr/local/bin/admin:ro
+
+services:
+  a:
+    <<: *common
+    hostname: mail.a.example
+    environment:
+      HOSTNAME: mail.a.example
+      FIRST_MAIL_DOMAIN: a.example
+      FIRST_MAIL_DOMAIN_ADMIN_PASSWORD: ${ADMIN_A_PASSWORD:-TestPassw0rd1!}
+      ROUNDCUBE_DES_KEY: ${A_DES_KEY:-0123456789abcdef0123456789ab}
+      MLMMJADMIN_API_TOKEN: ${A_TOKEN:-a-test-token-0123456789abcdef}
+      USE_FAIL2BAN: "NO"
+    ports:
+      - "12525:25"
+      - "12465:465"
+      - "12587:587"
+      - "12993:993"
+      - "12443:443"
+    networks:
+      default:
+        # A↔B routing without public DNS: docker compose's embedded DNS
+        # resolves these aliases to the container's own IP inside the
+        # `default` network. Postfix has no relayhost configured, so for a
+        # recipient at b.example it does its normal DNS lookup: no MX record
+        # for "b.example" exists, so it falls back to the RFC-5321 implicit
+        # MX (the domain's own A record) - which the alias below supplies.
+        # No transport_maps, no /etc/hosts edits, nothing inside the image
+        # is touched.
+        aliases:
+          - a.example
+          - mail.a.example
+
+  b:
+    <<: *common
+    hostname: mail.b.example
+    environment:
+      HOSTNAME: mail.b.example
+      FIRST_MAIL_DOMAIN: b.example
+      FIRST_MAIL_DOMAIN_ADMIN_PASSWORD: ${ADMIN_B_PASSWORD:-TestPassw0rd1!}
+      ROUNDCUBE_DES_KEY: ${B_DES_KEY:-fedcba9876543210fedcba987654}
+      MLMMJADMIN_API_TOKEN: ${B_TOKEN:-b-test-token-0123456789abcdef}
+      USE_FAIL2BAN: "NO"
+    ports:
+      - "22525:25"
+      - "22465:465"
+      - "22587:587"
+      - "22993:993"
+      - "22443:443"
+    networks:
+      default:
+        aliases:
+          - b.example
+          - mail.b.example
+
+networks:
+  default:
+    name: iredmail-acceptance
