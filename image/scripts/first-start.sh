@@ -57,11 +57,18 @@ CREATE USER IF NOT EXISTS 'amavisd'@'127.0.0.1' IDENTIFIED BY '${AMAVISD_DB_PW}'
 GRANT ALL PRIVILEGES ON amavisd.* TO 'amavisd'@'127.0.0.1';
 CREATE USER IF NOT EXISTS 'iredadmin'@'127.0.0.1' IDENTIFIED BY '${IREDADMIN_DB_PW}';
 GRANT SELECT,INSERT,DELETE,UPDATE ON vmail.* TO 'iredadmin'@'127.0.0.1';
+-- iRedAdmin's own db (sessions/log/settings - SQL/iredadmin.mysql, now part
+-- of schema.sql): without this grant every page 500s on the session table.
+GRANT SELECT,INSERT,DELETE,UPDATE ON iredadmin.* TO 'iredadmin'@'127.0.0.1';
 CREATE USER IF NOT EXISTS 'sogo'@'127.0.0.1' IDENTIFIED BY '${SOGO_DB_PW}';
 GRANT ALL PRIVILEGES ON sogo.* TO 'sogo'@'127.0.0.1';
 GRANT SELECT ON vmail.* TO 'sogo'@'127.0.0.1';
 CREATE USER IF NOT EXISTS 'iredapd'@'127.0.0.1' IDENTIFIED BY '${IREDAPD_DB_PW}';
 GRANT SELECT ON vmail.* TO 'iredapd'@'127.0.0.1';
+-- iRedAPD's own db (throttle/greylisting/... - SQL/iredapd.mysql, now
+-- part of schema.sql): without this grant every policy check logs a SQL
+-- access-denied error on its own db.
+GRANT SELECT,INSERT,DELETE,UPDATE ON iredapd.* TO 'iredapd'@'127.0.0.1';
 -- least-privilege technical account for the admin CLI (#57): only vmail db.
 CREATE USER IF NOT EXISTS 'admin_cli'@'127.0.0.1' IDENTIFIED BY '${ADMIN_CLI_PW}';
 GRANT SELECT,INSERT,DELETE,UPDATE ON vmail.* TO 'admin_cli'@'127.0.0.1';

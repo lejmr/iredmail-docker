@@ -235,11 +235,28 @@ RUN chmod +x /tmp/gen-supervisord.sh && /tmp/gen-supervisord.sh && rm /tmp/gen-s
 # --- Assemble the SQL schema first-start.sh imports into a fresh datadir -
 # vmail db tables (domain, mailbox, forwardings, admin, used_quota,
 # last_login, share_folder...) already live in one consolidated file;
-# amavisd needs its own db. No CREATE USER/GRANT here - first-start.sh
-# creates every technical account with a freshly generated password
-# (#57: least privilege per component), never a build-time one.
+# amavisd needs its own db. iRedAdmin also needs its own db (sessions,
+# log, settings...) - its SQL lives inside iRedAdmin's own source tree
+# (/opt/www/iRedAdmin-*/SQL/iredadmin.mysql), not under iRedMail's
+# samples/, and was missing here entirely: iRedAdmin's settings.py points
+# at database "iredadmin" (render-config.sh substitutes the password), but
+# nothing ever created it, so every request died on webpy's session-table
+# lookup ("Table 'iredadmin.sessions' doesn't exist") - HTTP 500 on
+# /iredadmin/ (row 20). iRedAPD needs its own db too (throttle,
+# greylisting, ...) for the same reason - its own settings.py names
+# database "iredapd" (/opt/iRedAPD-*/SQL/iredapd.mysql), never created
+# either; every policy check then failed its own SQL logging ("Access
+# denied for user 'iredapd'@'127.0.0.1' to database 'iredapd'", logged on
+# every single delivery) - harmless to the policy verdict itself (iRedAPD
+# degrades to DUNNO on its own SQL errors) but a real, constant background
+# error and a needless per-message iRedAPD DB round-trip failure under
+# load. No CREATE USER/GRANT here - first-start.sh creates every technical
+# account with a freshly generated password (#57: least privilege per
+# component), never a build-time one.
 RUN set -eux; \
     mkdir -p /usr/local/lib/iredmail/sql; \
+    iredadmin_sql="$(ls /opt/www/iRedAdmin-*/SQL/iredadmin.mysql)"; \
+    iredapd_sql="$(ls /opt/iRedAPD-*/SQL/iredapd.mysql)"; \
     { \
         echo "CREATE DATABASE IF NOT EXISTS vmail CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"; \
         echo "USE vmail;"; \
@@ -248,6 +265,24 @@ RUN set -eux; \
         echo "USE amavisd;"; \
         cat /opt/iredmail/samples/amavisd/amavisd.mysql; \
         echo "CREATE DATABASE IF NOT EXISTS sogo CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"; \
+        # SOGo's own storage tables (sogo_store, sogo_folder_info, ...) are
+        # created by sogod itself at first connect - but the "users" view
+        # it authenticates every request against (SOGoUserSources'
+        # viewURL = mysql://.../sogo/users in sogo.conf) is not one of
+        # them; iRedMail's installer creates it separately
+        # (functions/sogo.sh: sogo_initialize_db(), never carried into this
+        # image's schema.sql) from vmail.mailbox. Without it every SOGo
+        # login - webmail, CalDAV/CardDAV (row 12), ActiveSync (row 11) -
+        # gets a login page back for GET requests and a bare 401 for
+        # Basic-auth ones (OPTIONS on /Microsoft-Server-ActiveSync
+        # included), regardless of how correct the credentials are.
+        echo "CREATE VIEW sogo.users (c_uid, c_name, c_password, c_cn, mail, domain, c_webmail, c_calendar, c_activesync) AS SELECT username, username, password, name, username, domain, enablesogowebmail, enablesogocalendar, enablesogoactivesync FROM vmail.mailbox WHERE enablesogo=1 AND active=1;"; \
+        echo "CREATE DATABASE IF NOT EXISTS iredadmin CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"; \
+        echo "USE iredadmin;"; \
+        cat "$iredadmin_sql"; \
+        echo "CREATE DATABASE IF NOT EXISTS iredapd CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"; \
+        echo "USE iredapd;"; \
+        cat "$iredapd_sql"; \
     } > /usr/local/lib/iredmail/sql/schema.sql; \
     rm -rf /opt/iredmail/samples /opt/iredmail/pkgs /opt/iredmail/.git /opt/iredmail/dumps
 
