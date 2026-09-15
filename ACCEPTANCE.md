@@ -35,4 +35,6 @@ to him.
 | 19 | It works behind my reverse proxy | nginx-proxy in front with `X-Forwarded-*` | HTTPS web and ActiveSync work through the proxy | machine |
 | 20 | I manage domains, users and quotas in a web UI (the operations of rows 2-5) | HTTPS: log in as the admin, add a domain and a user through the UI's own forms/API | the new user can log in over IMAP; `admin domain list` shows the domain; the DKIM record for the domain is shown in the UI | machine (HTTP) + maintainer (it is usable on a phone) |
 
-Out of scope: LDAP, webmail as a requirement (the admin web UI is in scope - row 20), OAuth2, Kubernetes, arm64 in phase A.
+Out of scope: LDAP, webmail as a requirement (the admin web UI is in scope - row 20), OAuth2, Kubernetes, arm64.
+
+For this repository's final refresh (see CLAUDE.md), rows 1, 2, 4, 6, 7, 8, 10, 13, 16, 17 must pass; rows 3, 5, 9, 11, 12, 14, 15, 18, 19, 20 are run, and their result is recorded in the release notes as-is (pass, or the literal failure) - they are not worked on further here. The Stalwart-based successor project must pass all twenty.
