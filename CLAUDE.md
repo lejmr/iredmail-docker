@@ -15,10 +15,10 @@ file supplies what the skill leaves to the project.
   DEVELOPMENT.md). No feature work beyond what the acceptance rows need to
   pass; image size, ClamAV toggles and overrides are measured and recorded,
   not optimised. The README states plainly that the maintainer recommends
-  **Stalwart** (https://stalw.art) for new deployments; the maintainer's own
-  next-generation server (Stalwart + an ActiveSync layer) is a separate
-  project driven by the same `ACCEPTANCE.md` and the same black-box suite,
-  which is exactly why the suite never encodes what it is testing.
+  **Stalwart** (https://stalw.art) for new deployments - that is the only
+  place Stalwart appears in this repository; nothing here targets it. The
+  black-box suite would carry over to any other server, which is why it
+  never encodes what it is testing.
 - **Tests are user stories through public interfaces only** (SMTP, IMAP,
   HTTPS, ActiveSync, CalDAV/CardDAV, the `admin` CLI). Never `docker exec`
   into internals, never read config, never grep logs for implementation
