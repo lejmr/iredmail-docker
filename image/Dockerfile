@@ -162,6 +162,18 @@ RUN set -eux; \
     # IPv4-only is also all row 16 needs.
     :
 
+# --- Row 8: unauthenticated relay is a hard 5xx, not a 4xx defer --------
+# Postfix >=3.6's built-in smtpd_relay_restrictions default (active here:
+# compatibility_level=3.6) is "permit_mynetworks, permit_sasl_authenticated,
+# defer_unauth_destination" - a *temporary* 454 4.7.1, on the theory that a
+# later restriction class might still accept the mail. relay_restrictions
+# runs before recipient_restrictions in the RCPT check order, so its 4xx
+# fires before smtpd_recipient_restrictions' own reject_unauth_destination
+# (5xx) is ever reached - an unauthenticated relay attempt got a soft defer
+# instead of the acceptance suite's `554 5.7.1 ... Relay access denied`
+# (row 8). Pin it to the pre-3.6 hard-reject behaviour explicitly.
+RUN postconf -e "smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination"
+
 # --- Remove iRedMail's own wildcard DKIM key from amavisd.conf ----------
 # The installer wrote a `dkim_key('build.invalid', ...)` line plus a
 # catch-all `@dkim_signature_options_bysender_maps` ('.' => ...) into
