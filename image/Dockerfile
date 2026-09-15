@@ -158,6 +158,7 @@ RUN set -eux; \
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     set -eux; \
+    apt-get update; \
     apt-get install -y --no-install-recommends supervisor; \
     apt-get purge -y --auto-remove fail2ban netdata || true
 
