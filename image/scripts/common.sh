@@ -127,7 +127,7 @@ require_mountpoints() {
     # row 13 / #84: refuse to start on a mis-mounted (anonymous) volume
     # instead of silently writing into the container's writable layer.
     local p
-    for p in /data/mysql /data/vmail /data/certs /data/overrides; do
+    for p in /data/mysql /data/vmail /data/certs /data/overrides /data/secrets; do
         mkdir -p "$p"
         if ! mountpoint -q "$p"; then
             echo "FATAL: $p is not a mounted volume - refusing to start (fixes #84)." >&2

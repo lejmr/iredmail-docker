@@ -241,7 +241,7 @@ COPY scripts/healthcheck.sh /usr/local/bin/healthcheck.sh
 RUN chmod +x /usr/local/bin/admin /usr/local/bin/healthcheck.sh /entrypoint.sh \
     /usr/local/lib/iredmail/*.sh
 
-VOLUME ["/data/mysql", "/data/vmail", "/data/certs", "/data/overrides"]
+VOLUME ["/data/mysql", "/data/vmail", "/data/certs", "/data/overrides", "/data/secrets"]
 
 # 25 smtp, 465 smtps, 587 submission, 993 imaps, 443 https, 80 acme
 EXPOSE 25 465 587 993 443 80
