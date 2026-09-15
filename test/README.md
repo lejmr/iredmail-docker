@@ -52,12 +52,25 @@ at `/usr/local/bin/admin`. A future phase-B image should ship its own
 
 ## A↔B routing without public DNS
 
-`test/compose.yaml` gives each service a compose network alias equal to its
-mail domain (`a.example`, `b.example`) in addition to its hostname alias.
-Docker Compose's embedded DNS resolves those aliases to the container's own
-address inside the `iredmail-acceptance` network. Postfix in this image has
-no `relayhost` configured, so for a recipient at `b.example` it does its
-normal DNS resolution: no MX record exists for `b.example`, so per RFC 5321
-it falls back to the domain's own A record - which the alias supplies
-directly. No `transport_maps`, no `/etc/hosts` edits, nothing inside the
-image touched.
+Postfix in this image has no `relayhost` configured; for a recipient at
+`b.example` it resolves `b.example` itself and, finding no MX record, falls
+back to the domain's own A record per RFC 5321 - so making `a.example` and
+`b.example` resolve to each other's container is enough, no `transport_maps`
+needed.
+
+The first attempt used a plain compose network alias (`aliases: [b.example]`)
+and docker's embedded DNS, on the theory that a domain-name alias plus "no
+MX -> fall back to A record" would just work. It didn't, on this host:
+Docker Desktop forwards the host machine's own DNS search domains into the
+container's `resolv.conf`, and glibc's/Postfix's resolver tries
+`b.example.<host's search domain>` *before* the bare name whenever the name
+has fewer dots than `ndots` - which some networks resolve via a public
+wildcard DNS record, silently sending mail toward a real, unrelated host on
+the internet instead of the container next to it. `dns_search: []` did not
+fix it (Docker Desktop re-added the host's search list regardless).
+
+`test/compose.yaml` instead gives A and B static IPs on a fixed subnet
+(`172.30.0.10` / `.11`) and points each at the other with Compose's
+`extra_hosts`. NSS "files" (`/etc/hosts`) has no search-suffix behaviour at
+all and is consulted before DNS, so this is immune to the above - and it is
+still a declarative Compose field, not a file edited inside the image.

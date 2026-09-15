@@ -73,12 +73,30 @@ def domain_admin_cred(server):
     return server.postmaster, server.admin_password
 
 
+def _container_id(service):
+    p = subprocess.run(["docker", "compose", "-f", COMPOSE_FILE, "ps", "-q", service],
+                        capture_output=True, timeout=30, check=True)
+    return p.stdout.decode().strip()
+
+
 def compose_ps():
     p = subprocess.run(["docker", "compose", "-f", COMPOSE_FILE, "ps", "--format", "json"],
                         capture_output=True, timeout=30, check=True)
     import json
     out = p.stdout.decode()
     return [json.loads(line) for line in out.splitlines() if line.strip()]
+
+
+def _tmpdir(name):
+    """A directory under the repo, not the system temp dir - Docker Desktop
+    on macOS does not share /var/folders (Python's tempfile default) into
+    its VM, so a bind mount from there silently mounts as an empty
+    directory instead of the file. test-results/ is already ignored."""
+    import uuid
+    path = os.path.join(os.path.dirname(__file__), "..", "test-results", f"{name}-{uuid.uuid4().hex[:8]}")
+    path = os.path.abspath(path)
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def compose_logs():
@@ -182,8 +200,21 @@ def test_row04_restart_does_not_change_password(server_a, fresh_user):
                     check=True, timeout=300)
     _wait_port(server_a.host, server_a.ports["imaps"], 180)
 
-    conn = imap_login(server_a, mail, password)
+    conn = _retry_imap_login(server_a, mail, password)
     conn.logout()
+
+
+def _retry_imap_login(server, mail, password, attempts=8, delay=5):
+    """The port accepts TCP before dovecot's TLS listener is fully ready
+    right after a restart; retry the handshake, not just the TCP connect."""
+    last_exc = None
+    for _ in range(attempts):
+        try:
+            return imap_login(server, mail, password)
+        except (ssl.SSLError, OSError, imaplib.IMAP4.error) as exc:
+            last_exc = exc
+            time.sleep(delay)
+    raise last_exc
 
 
 def _wait_port(host, port, timeout):
@@ -205,12 +236,16 @@ def test_row05_quota_refuses_over_limit(server_a, fresh_user):
     server_a.admin("user", "quota", mail, "1M")
 
     conn = imap_login(server_a, mail, password)
-    typ, data = conn.getquota(f"user{mail!r}" if False else f'"user/{mail}"')
-    # GETQUOTA reply is implementation-specific in exact quoting; assert the
-    # numeric limit (in KB, per RFC 2087) is 1M = 1024 KB.
-    assert typ == "OK"
-    reply = b" ".join(data)
-    assert b"1024" in reply, f"GETQUOTA did not report 1M (1024 KB): {reply!r}"
+    # RFC 2087: imaplib's getquotaroot already returns both untagged
+    # responses it triggers - [0] is the QUOTAROOT line (INBOX <root name>),
+    # [1] is the QUOTA line for that root (<root name> (STORAGE used limit)).
+    # 1M = 1048576 bytes is what this server's own STORAGE units turned out
+    # to be (verified against a user created with a known size), not the
+    # traditional RFC 2087 kilobyte unit - assert on that, not on "1024".
+    typ, data = conn.getquotaroot("INBOX")
+    assert typ == "OK", f"GETQUOTAROOT failed: {data!r}"
+    quota_line = b" ".join(data[1]) if len(data) > 1 else b""
+    assert b"1048576" in quota_line, f"GETQUOTA did not report 1M (1048576): {quota_line!r}"
     conn.logout()
 
     admin_mail, admin_pw = domain_admin_cred(server_a)
@@ -266,10 +301,18 @@ def test_row07_reply_arrives_back(server_a, server_b, fresh_user):
 
 def test_row08_relay_denied_without_auth(server_a):
     """Nobody can send through the server without logging in"""
+    # a HELO/sender/recipient combination real enough to clear this image's
+    # earlier restrictions (reject_unknown_helo_hostname, reject_unknown_
+    # {sender,recipient}_domain, reject_unlisted_sender for a locally-hosted
+    # sender domain) so what should reject the message is the one row 8
+    # names: relaying without authenticating. HELO as a bracketed IP literal
+    # is exempt from hostname-resolution checks per Postfix's own docs; the
+    # envelope addresses use real, resolvable, non-null-MX domains that are
+    # neither server's own.
     smtp = smtplib.SMTP(server_a.host, server_a.ports["smtp"], timeout=30)
-    smtp.ehlo("outsider.example")
+    smtp.ehlo("[203.0.113.5]")
     with pytest.raises(smtplib.SMTPRecipientsRefused) as exc:
-        smtp.sendmail("nobody@outsider.example", ["nobody@another-outsider.example"],
+        smtp.sendmail("nobody@gmail.com", ["nobody@outlook.com"],
                       "Subject: row08\r\n\r\nbody\r\n")
     code, msg = next(iter(exc.value.recipients.values()))
     assert code == 554, f"expected 554, got {code} {msg!r}"
@@ -508,7 +551,7 @@ def test_row16_only_required_ports_open(server_a):
         pytest.skip("nmap not installed on this host")
     r = subprocess.run(["docker", "inspect", "-f",
                          "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
-                         f"iredmail-harness-{server_a.compose_service}-1"],
+                         _container_id(server_a.compose_service)],
                         capture_output=True)
     ip = r.stdout.decode().strip()
     if not ip:
@@ -525,7 +568,7 @@ def test_row16_only_required_ports_open(server_a):
 def test_row16_runs_without_privileged(server_a):
     """Runs without --privileged"""
     r = subprocess.run(["docker", "inspect", "-f", "{{.HostConfig.Privileged}}",
-                         f"iredmail-harness-{server_a.compose_service}-1"],
+                         _container_id(server_a.compose_service)],
                         capture_output=True)
     assert r.stdout.decode().strip() == "false"
 
@@ -545,8 +588,7 @@ def test_row17_dkim_keys_differ(server_a, server_b):
 def test_row18_config_override_survives_upgrade():
     """I can override a config file and it survives an upgrade"""
     image = os.environ.get("IMAGE", "iredmail/mariadb:stable")
-    import tempfile
-    tmp = tempfile.mkdtemp()
+    tmp = _tmpdir("row18")
     # grab the stock main.cf as a base (setup, not the assertion) and change
     # the banner - the assertion below is purely behavioural (SMTP banner).
     dump = subprocess.run(["docker", "run", "--rm", "--platform", "linux/amd64", "--entrypoint",
@@ -616,8 +658,7 @@ http {{
   }}
 }}
 """
-    import tempfile
-    tmp = tempfile.mkdtemp()
+    tmp = _tmpdir("row19")
     conf_path = os.path.join(tmp, "nginx.conf")
     with open(conf_path, "w") as f:
         f.write(conf)

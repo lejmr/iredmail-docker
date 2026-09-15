@@ -31,19 +31,26 @@ set -euo pipefail
 
 MY_CNF=/root/.my.cnf
 DKIM_DIR=/opt/iredmail/custom/amavisd/dkim
-DKIM_CONF_DIR=/etc/amavis/conf.d
+# amavisd is started as `amavisd-new -c /etc/amavis/conf.d/50-user`, which is
+# a single file, not a directory glob; 50-user's own tail does
+# `include_optional_config_files('/opt/iredmail/custom/amavisd/amavisd.conf')`
+# - that is the documented, image-supported extension point, so new
+# dkim_key() lines go there (one per line, tagged so `domain rm` can strip
+# just its own line).
+CUSTOM_AMAVISD_CONF=/opt/iredmail/custom/amavisd/amavisd.conf
 STORAGE_BASE=/var/vmail
 
 sql() { mysql --defaults-file="$MY_CNF" vmail -N -B -e "$1"; }
 
-# size like 1G / 500M -> MB integer (vmail.quota / mailbox.quota are in bytes
-# in some iRedMail releases and MB in others; this image's mailbox.quota
-# column is bytes, so convert to bytes here).
-to_bytes() {
+# size like 1G / 500M -> KB integer. Verified empirically (GETQUOTA on a
+# user created with a known size): mailbox.quota is read by dovecot-sql as
+# KILOBYTES, not bytes and not MB - a byte-unit value here silently produces
+# a quota 1024x too large.
+to_kb() {
     local v="$1"
     case "$v" in
-        *G|*g) echo $(( ${v%[Gg]} * 1024 * 1024 * 1024 )) ;;
-        *M|*m) echo $(( ${v%[Mm]} * 1024 * 1024 )) ;;
+        *G|*g) echo $(( ${v%[Gg]} * 1024 * 1024 )) ;;
+        *M|*m) echo $(( ${v%[Mm]} * 1024 )) ;;
         *)     echo "$v" ;;
     esac
 }
@@ -57,11 +64,20 @@ cmd_domain_add() {
 
     mkdir -p "$DKIM_DIR"
     /usr/sbin/amavisd-new genrsa "${DKIM_DIR}/${domain}.pem" 1024 >/dev/null 2>&1
-    cat > "${DKIM_CONF_DIR}/60-admin-shim-${domain}" <<EOF
-dkim_key("${domain}", "dkim", "${DKIM_DIR}/${domain}.pem");
-EOF
+    chown amavis:amavis "${DKIM_DIR}/${domain}.pem"
+    chmod 400 "${DKIM_DIR}/${domain}.pem"
+
+    mkdir -p "$(dirname "$CUSTOM_AMAVISD_CONF")"
+    touch "$CUSTOM_AMAVISD_CONF"
+    grep -qF "admin-shim:${domain}" "$CUSTOM_AMAVISD_CONF" || \
+        echo "dkim_key(\"${domain}\", \"dkim\", \"${DKIM_DIR}/${domain}.pem\"); # admin-shim:${domain}" \
+            >> "$CUSTOM_AMAVISD_CONF"
+
     restart_amavis
-    sleep 1
+    for i in $(seq 1 10); do
+        /usr/sbin/amavisd-new showkeys "${domain}" 2>/dev/null | grep -q DKIM1 && break
+        sleep 1
+    done
 
     echo "MX: 10 ${HOSTNAME}"
     /usr/sbin/amavisd-new showkeys "${domain}" 2>/dev/null
@@ -77,7 +93,8 @@ cmd_domain_rm() {
          DELETE FROM alias WHERE domain='${domain}';
          DELETE FROM domain_admins WHERE domain='${domain}';
          DELETE FROM domain WHERE domain='${domain}';"
-    rm -f "${DKIM_DIR}/${domain}.pem" "${DKIM_CONF_DIR}/60-admin-shim-${domain}"
+    rm -f "${DKIM_DIR}/${domain}.pem"
+    [ -f "$CUSTOM_AMAVISD_CONF" ] && sed -i "/# admin-shim:${domain}$/d" "$CUSTOM_AMAVISD_CONF"
     restart_amavis
 }
 
@@ -98,16 +115,16 @@ cmd_user_add() {
     [ -n "$password" ] || { echo "admin user add: --password is required" >&2; exit 2; }
 
     local username="${mail%@*}" domain="${mail#*@}"
-    local hash quota_bytes maildir date
+    local hash quota_kb maildir date
     hash="$(doveadm pw -s CRYPT -p "$password")"
-    quota_bytes="$(to_bytes "$quota")"
+    quota_kb="$(to_kb "$quota")"
     date="$(date +%Y.%m.%d.%H.%M.%S)"
     maildir="${domain}/${username}-${date}/"
 
     sql "INSERT INTO mailbox (username, password, name, storagebasedirectory,
              storagenode, maildir, quota, domain, active, passwordlastchange, created, modified)
          VALUES ('${mail}', '${hash}', '${username}', '${STORAGE_BASE}',
-             'vmail1', '${maildir}', ${quota_bytes}, '${domain}', 1, NOW(), NOW(), NOW());
+             'vmail1', '${maildir}', ${quota_kb}, '${domain}', 1, NOW(), NOW(), NOW());
          INSERT INTO forwardings (address, forwarding, domain, dest_domain, is_forwarding)
          VALUES ('${mail}', '${mail}', '${domain}', '${domain}', 1);"
 }
@@ -122,17 +139,20 @@ cmd_user_rm() {
 }
 
 cmd_user_quota() {
-    local mail="$1" quota_bytes
-    quota_bytes="$(to_bytes "$2")"
-    sql "UPDATE mailbox SET quota=${quota_bytes} WHERE username='${mail}';"
+    local mail="$1" quota_kb
+    quota_kb="$(to_kb "$2")"
+    sql "UPDATE mailbox SET quota=${quota_kb} WHERE username='${mail}';"
 }
+
+CUSTOM_DIR="$(dirname "$DKIM_DIR")"  # /opt/iredmail/custom/amavisd: dkim/ keys + amavisd.conf
 
 cmd_backup() {
     local tmp; tmp="$(mktemp -d)"
     mysqldump --defaults-file="$MY_CNF" vmail > "${tmp}/vmail.sql"
-    tar -cf - -C "$tmp" vmail.sql \
-        -C "$(dirname "$DKIM_DIR")" "$(basename "$DKIM_DIR")" \
-        -C "$STORAGE_BASE" . 2>/dev/null
+    mkdir -p "${tmp}/custom" "${tmp}/mail"
+    cp -a "${CUSTOM_DIR}/." "${tmp}/custom/" 2>/dev/null || true
+    cp -a "${STORAGE_BASE}/." "${tmp}/mail/" 2>/dev/null || true
+    tar -cf - -C "$tmp" vmail.sql custom mail 2>/dev/null
     rm -rf "$tmp"
 }
 
@@ -140,15 +160,9 @@ cmd_restore() {
     local tmp; tmp="$(mktemp -d)"
     tar -xf - -C "$tmp"
     mysql --defaults-file="$MY_CNF" vmail < "${tmp}/vmail.sql"
-    mkdir -p "$(dirname "$DKIM_DIR")"
-    cp -a "${tmp}/$(basename "$DKIM_DIR")/." "$DKIM_DIR/" 2>/dev/null || true
-    # everything else in the tar that isn't vmail.sql/dkim is maildir content
-    for f in "$tmp"/*; do
-        b="$(basename "$f")"
-        [ "$b" = "vmail.sql" ] && continue
-        [ "$b" = "$(basename "$DKIM_DIR")" ] && continue
-        cp -a "$f" "$STORAGE_BASE/" 2>/dev/null || true
-    done
+    mkdir -p "$CUSTOM_DIR"
+    cp -a "${tmp}/custom/." "${CUSTOM_DIR}/" 2>/dev/null || true
+    cp -a "${tmp}/mail/." "${STORAGE_BASE}/" 2>/dev/null || true
     rm -rf "$tmp"
     restart_amavis
     supervisorctl restart dovecot postfix >/dev/null 2>&1 || true
