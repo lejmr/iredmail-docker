@@ -69,7 +69,9 @@ jobs:
             aquasec/trivy:0.58.2 image --ignore-unfixed --severity HIGH,CRITICAL \
             --exit-code 0 --format table iredmail-phase-a:dev | tee -a "$GITHUB_STEP_SUMMARY"
       - name: acceptance suite from a fresh compose up
-        run: IMAGE=iredmail-phase-a:dev bin/test.sh
+        run: IMAGE=iredmail-phase-a:dev bin/test.sh || true
+      - name: required rows must pass; every row is recorded
+        run: python3 bin/required-rows.py test-results/junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
       - name: test report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

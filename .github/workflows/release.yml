@@ -65,26 +65,7 @@ jobs:
         id: suite
         run: |
           IMAGE=iredmail-phase-a:dev bin/test.sh || true
-          python3 - <<'PY' | tee rows.md
-          import xml.etree.ElementTree as ET, re, collections
-          t = ET.parse('test-results/junit.xml').getroot()
-          rows = collections.OrderedDict()
-          for c in t.iter('testcase'):
-              m = re.match(r'test_row(\d+)', c.get('name', ''))
-              if not m: continue
-              r = int(m.group(1)); st = 'PASS'
-              if c.find('failure') is not None or c.find('error') is not None: st = 'FAIL'
-              elif c.find('skipped') is not None: st = 'SKIP'
-              rows.setdefault(r, []).append(st)
-          req = {1, 2, 4, 6, 7, 8, 10, 13, 16, 17}
-          bad = []
-          print('| Row | Result |'); print('|---|---|')
-          for r in sorted(rows):
-              st = 'FAIL' if 'FAIL' in rows[r] else ('SKIP' if set(rows[r]) == {'SKIP'} else 'PASS')
-              print(f'| {r} | {st}{" (required)" if r in req else ""} |')
-              if r in req and st != 'PASS': bad.append(r)
-          if bad: raise SystemExit(f'required rows not passing: {bad}')
-          PY
+          python3 bin/required-rows.py test-results/junit.xml | tee rows.md
 
       - name: tag the release
         run: |
