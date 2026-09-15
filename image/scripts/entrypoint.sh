@@ -33,6 +33,14 @@ if [ "$CLAMAV" = "0" ]; then
     sed -i "s/^\(\s*\['ClamAV::Daemon'.*\)$/#\1/" /etc/amavis/conf.d/15-content_filter_mode 2>/dev/null || true
 else
     rm -f "$CLAMAV_TOGGLE"
+    # /var/run/clamav (clamd.conf: LocalSocket /var/run/clamav/clamd.ctl)
+    # only ever gets created by systemd-tmpfiles from the package's
+    # RuntimeDirectory= unit setting, which never runs under supervisord -
+    # without it clamd logs "Socket file ... could not be bound: No such
+    # file or directory" and never actually comes up, so CLAMAV=1 silently
+    # did nothing even though supervisor showed it RUNNING.
+    mkdir -p /var/run/clamav
+    chown clamav:clamav /var/run/clamav
 fi
 
 /usr/local/lib/iredmail/peer-domains.sh
