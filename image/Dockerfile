@@ -148,8 +148,11 @@ RUN set -eux; \
     sed -i "s/^bind-address.*/bind-address = 127.0.0.1/" /etc/mysql/mariadb.conf.d/50-server.cnf \
         || echo 'bind-address = 127.0.0.1' >> /etc/mysql/mariadb.conf.d/50-server.cnf; \
     sed -i '1a listen = 127.0.0.1, ::1' /etc/dovecot/dovecot.conf; \
-    printf '\nservice imap-login {\n  inet_listener imap { address = *, :: }\n  inet_listener imaps { address = *, :: }\n}\n' \
+    printf '\nservice imap-login {\n  inet_listener imap {\n    listen = *, ::\n  }\n  inet_listener imaps {\n    listen = *, ::\n  }\n}\n' \
         >> /etc/dovecot/dovecot.conf; \
+    printf '\nservice pop3-login {\n  inet_listener pop3 {\n    listen = 127.0.0.1, ::1\n  }\n  inet_listener pop3s {\n    listen = 127.0.0.1, ::1\n  }\n}\nservice managesieve-login {\n  inet_listener sieve {\n    listen = 127.0.0.1, ::1\n  }\n}\n' \
+        >> /etc/dovecot/dovecot.conf; \
+    doveconf -n >/dev/null; \
     grep -q '^\$inet_socket_bind' /etc/amavis/conf.d/50-user 2>/dev/null || \
         echo '$inet_socket_bind = "127.0.0.1";' >> /etc/amavis/conf.d/50-user; \
     grep -rl "^bind_host" /opt/iredapd/settings.py 2>/dev/null | xargs -r sed -i "s/^bind_host.*/bind_host = '127.0.0.1'/" || true
