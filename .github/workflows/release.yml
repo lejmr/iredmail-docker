@@ -1,0 +1,134 @@
+name: Release
+
+# One button: Actions -> Release -> Run workflow (works from a phone).
+# Builds the image on GitHub's amd64 runners, proves the acceptance rows
+# from a fresh compose up, and only then tags the commit, pushes the image
+# to GHCR and Docker Hub as <date> and latest, and publishes a GitHub
+# release whose notes are this version's CHANGELOG.md section plus the
+# literal per-row result of the suite. It refuses before touching anything
+# if the version was already released or has no changelog section.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release date (YYYY-MM-DD). Leave blank to use today."
+        required: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: work out the release version
+        id: version
+        run: |
+          ver="${{ inputs.version }}"
+          [ -n "$ver" ] || ver=$(date +%F)
+          case "$ver" in
+            [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+            *) echo "::error::'$ver' is not a YYYY-MM-DD date"; exit 1 ;;
+          esac
+          [ "$ver" = "$(date +%F)" ] || { echo "::error::use today's date ($(date +%F)), or leave the input blank"; exit 1; }
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: refuse to re-release a version that already shipped
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$v" >/dev/null; then
+            echo "::error::tag $v already exists - $v was already released"; exit 1
+          fi
+
+      - name: CHANGELOG.md has a section for this release
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          grep -q "^## \[$v\]" CHANGELOG.md || { echo "::error::CHANGELOG.md has no '## [$v]' section"; exit 1; }
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: image
+          tags: iredmail-phase-a:dev
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: acceptance suite from a fresh compose up
+        id: suite
+        run: |
+          IMAGE=iredmail-phase-a:dev bin/test.sh || true
+          python3 - <<'PY' | tee rows.md
+          import xml.etree.ElementTree as ET, re, collections
+          t = ET.parse('test/junit.xml').getroot()
+          rows = collections.OrderedDict()
+          for c in t.iter('testcase'):
+              m = re.match(r'test_row(\d+)', c.get('name', ''))
+              if not m: continue
+              r = int(m.group(1)); st = 'PASS'
+              if c.find('failure') is not None or c.find('error') is not None: st = 'FAIL'
+              elif c.find('skipped') is not None: st = 'SKIP'
+              rows.setdefault(r, []).append(st)
+          req = {1, 2, 4, 6, 7, 8, 10, 13, 16, 17}
+          bad = []
+          print('| Row | Result |'); print('|---|---|')
+          for r in sorted(rows):
+              st = 'FAIL' if 'FAIL' in rows[r] else ('SKIP' if set(rows[r]) == {'SKIP'} else 'PASS')
+              print(f'| {r} | {st}{" (required)" if r in req else ""} |')
+              if r in req and st != 'PASS': bad.append(r)
+          if bad: raise SystemExit(f'required rows not passing: {bad}')
+          PY
+
+      - name: tag the release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.version }}"
+          git push origin --tags
+
+      - name: log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: log in to Docker Hub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: push the tested image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: image
+          push: true
+          cache-from: type=gha
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+            lejmr/iredmail:${{ steps.version.outputs.version }}
+            lejmr/iredmail:latest
+
+      - name: release notes
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          {
+            awk -v v="$v" '$0 == "## [" v "]" {f=1; next} f && /^## \[/ {exit} f {print}' CHANGELOG.md
+            echo; echo '## Acceptance rows in this release'; echo
+            cat rows.md
+            echo; echo "Image: \`ghcr.io/${{ github.repository }}:$v\` / \`lejmr/iredmail:$v\`"
+          } > release-body.md
+
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          body_path: release-body.md
