@@ -54,7 +54,25 @@ for svc in $SERVICES; do
         # 0 and considers the program "stopped", while the detached
         # workers linger holding port 20000 - the next autorestart then
         # fails to bind it).
-        execstart="/usr/sbin/sogod -WONoDetach YES -WOWorkersCount 2 -WOPidFile /var/run/sogo/sogo.pid -WOLogFile /var/log/sogo/sogo.log"
+        #
+        # sogod creates its own SQL storage tables (sogo_store,
+        # sogo_folder_info, sogo_sessions_folder, sogo_user_profile, ...)
+        # itself, but only in a one-shot check at daemon startup, never
+        # retried later - supervisord starts programs in priority order but
+        # does not wait for one to be *ready* before starting the next, so
+        # sogod (priority after mariadb) can win the race against
+        # mariadbd's own startup and find the socket refusing connections
+        # on that first, only attempt. The tables then silently never
+        # exist for the life of the container: SOGo login/webmail still
+        # "work" (mail folders come from IMAP, not these tables), but every
+        # Calendar/Contacts/ActiveSync folder and every session is broken
+        # (found via `docker exec ... mysql -e "SHOW TABLES"` showing only
+        # the `users` auth view - restarting sogod alone, once MariaDB was
+        # already up, made them appear). `mysqladmin ping` in a wait loop
+        # before exec'ing sogod is cheap and makes this deterministic
+        # instead of a startup-order race - row 11/12's Calendar/Contacts
+        # folders and CalDAV/CardDAV need it, ActiveSync's own folders too.
+        execstart="/bin/sh -c 'for i in \$(seq 1 60); do mysqladmin ping -h 127.0.0.1 --silent 2>/dev/null && break; sleep 1; done; exec /usr/sbin/sogod -WONoDetach YES -WOWorkersCount 2 -WOPidFile /var/run/sogo/sogo.pid -WOLogFile /var/log/sogo/sogo.log'"
         user=sogo
     elif [ "$svc" = "iredapd" ]; then
         # ponytail: iredapd.py self-daemonizes (libs/daemon.py double-fork)
