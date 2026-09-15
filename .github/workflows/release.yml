@@ -99,11 +99,31 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Docker Hub is optional: without the two repository secrets the release
+      # goes to GHCR only (the job summary says so), so a missing token never
+      # blocks a release.
       - name: log in to Docker Hub
+        id: dockerhub
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: image tags
+        id: tags
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          tags="ghcr.io/${{ github.repository }}:$v
+          ghcr.io/${{ github.repository }}:latest"
+          if [ "${{ steps.dockerhub.outcome }}" = "success" ]; then
+            tags="$tags
+          lejmr/iredmail:$v
+          lejmr/iredmail:latest"
+          else
+            echo "Docker Hub secrets not set - published to GHCR only" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          { echo "tags<<EOF"; echo "$tags"; echo "EOF"; } >> "$GITHUB_OUTPUT"
 
       - name: push the tested image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -111,11 +131,7 @@ jobs:
           context: image
           push: true
           cache-from: type=gha
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
-            ghcr.io/${{ github.repository }}:latest
-            lejmr/iredmail:${{ steps.version.outputs.version }}
-            lejmr/iredmail:latest
+          tags: ${{ steps.tags.outputs.tags }}
 
       - name: release notes
         run: |
@@ -124,7 +140,7 @@ jobs:
             awk -v v="$v" '$0 == "## [" v "]" {f=1; next} f && /^## \[/ {exit} f {print}' CHANGELOG.md
             echo; echo '## Acceptance rows in this release'; echo
             cat rows.md
-            echo; echo "Image: \`ghcr.io/${{ github.repository }}:$v\` / \`lejmr/iredmail:$v\`"
+            echo; echo "Image: \`ghcr.io/${{ github.repository }}:$v\`"
           } > release-body.md
 
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
