@@ -82,7 +82,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ( mysqld_safe --datadir=/var/lib/mysql --skip-networking=0 --bind-address=127.0.0.1 & ) ; \
     for i in $(seq 1 60); do mysqladmin ping --silent && break; sleep 1; done; \
     mysqladmin ping; \
-    echo "127.0.0.1 mail.build.invalid mail localhost" >> /etc/hosts; \
     IREDMAIL_HOSTNAME=mail.build.invalid \
     AUTO_USE_EXISTING_CONFIG_FILE=y \
     AUTO_INSTALL_WITHOUT_CONFIRM=y \
@@ -133,6 +132,24 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -f /var/lib/dkim/*.pem /var/lib/dkim/*.private 2>/dev/null || true; \
     mv /usr/bin/systemctl.real /usr/bin/systemctl 2>/dev/null || true; \
     rm -f /usr/sbin/policy-rc.d
+
+# --- Row 16: nothing listens except 25/465/587/993/443(+80) -----------
+# iRedMail's own defaults already bind most internal daemons to
+# LOCAL_ADDRESS (127.0.0.1: amavis, SOGo, memcached - iRedMail/conf/*), but
+# MariaDB, Dovecot's non-mail-client services (managesieve, doveadm,
+# old-stats) and iRedAPD's policy socket are not scoped down by the
+# installer. Force loopback-only explicitly rather than trust the default,
+# and re-open only the two Dovecot listeners that must be public (imap for
+# STARTTLS, imaps).
+RUN set -eux; \
+    sed -i "s/^bind-address.*/bind-address = 127.0.0.1/" /etc/mysql/mariadb.conf.d/50-server.cnf \
+        || echo 'bind-address = 127.0.0.1' >> /etc/mysql/mariadb.conf.d/50-server.cnf; \
+    sed -i '1i listen = 127.0.0.1, ::1' /etc/dovecot/dovecot.conf; \
+    printf '\nservice imap-login {\n  inet_listener imap { address = *, :: }\n  inet_listener imaps { address = *, :: }\n}\n' \
+        >> /etc/dovecot/dovecot.conf; \
+    grep -q '^\$inet_socket_bind' /etc/amavis/conf.d/50-user 2>/dev/null || \
+        echo '$inet_socket_bind = "127.0.0.1";' >> /etc/amavis/conf.d/50-user; \
+    grep -rl "^bind_host" /opt/iredapd/settings.py 2>/dev/null | xargs -r sed -i "s/^bind_host.*/bind_host = '127.0.0.1'/" || true
 
 # --- Runtime dependencies (supervisord, no fail2ban / netdata) ---------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

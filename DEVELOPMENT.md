@@ -33,6 +33,26 @@ never collides with anything else on the machine):
     docker compose -p imagea ps                 # wait for both `healthy`
     docker compose -p imagea down -v             # tear down, including volumes
 
+### Build: a known local limitation, not an image bug
+
+On an arm64 Mac under Colima/QEMU (`--platform linux/amd64` emulation), the
+build reaches the unattended `bash iRedMail.sh` step and fails partway
+through apt's dependency install: every `python3-*` package's postinst
+byte-compiles with `py3compile`, which shells out to `python3.13 -c
+'import sys; print(sys.implementation.cache_tag)'` - and that subprocess
+**segfaults** (exit status -11) under this host's QEMU user-mode
+emulation. This is a QEMU/Python 3.13 interaction on the build host, not a
+bug in `image/Dockerfile` or the installer variables (everything up to
+that apt run - config generation, the temporary MariaDB bootstrap -
+completed correctly both times it was tried).
+
+Until Colima can run amd64 via Rosetta instead of QEMU (or the image is
+built on real amd64 hardware), treat local `--platform linux/amd64`
+builds on Apple Silicon as unreliable and build in CI instead:
+`.github/workflows/build.yml` runs on GitHub's amd64 runners, builds the
+image, reports its size, runs the acceptance suite against a fresh
+`compose up` when `bin/test.sh` exists, and pushes to GHCR on `master`.
+
 ### `admin` CLI
 
 `/usr/local/bin/admin` inside the container (bash, no extra deps):
