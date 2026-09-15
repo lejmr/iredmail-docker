@@ -139,17 +139,34 @@ cmd_dkim() {
 cmd_backup() {
     # SQL dumps (vmail, amavisd, iredadmin, sogo) + vmail store + dkim keys
     # + certs, as a single tar to stdout. Restore is the exact inverse.
-    local tmp; tmp="$(mktemp -d)"
+    #
+    # `tmp` is deliberately NOT `local`: a `trap ... EXIT` registered inside
+    # a function still only fires once the whole script exits, by which
+    # point this function has already returned and a `local` var is out of
+    # scope - under `set -u` (common.sh) that made the trap itself fail
+    # with "tmp: unbound variable" on the way out, so `admin backup` always
+    # exited 1 even though the tar it wrote to stdout was already complete
+    # and correct.
+    tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' EXIT
     mkdir -p "$tmp/sql"
     for db in vmail amavisd sogo; do
         mysqldump_root --no-tablespaces "$db" > "$tmp/sql/${db}.sql" 2>/dev/null || true
     done
-    tar -cf - -C / var/vmail var/lib/dkim data/certs -C "$tmp" sql 2>/dev/null
+    # -h/--dereference: /var/vmail is a symlink to /data/vmail (set up at
+    # build time so every config file iRedMail generated keeps working
+    # unmodified - see Dockerfile). Without -h, tar archives the symlink
+    # itself (a single zero-byte "var/vmail -> /data/vmail" entry) instead
+    # of the mail it points at - `admin backup` silently backed up zero
+    # mail every time. Found by restoring a backup onto a fresh server and
+    # checking alice's INBOX (row 14): login worked, IMAP SEARCH ALL
+    # returned 0 messages.
+    tar -chf - -C / var/vmail var/lib/dkim data/certs -C "$tmp" sql 2>/dev/null
 }
 
 cmd_restore() {
-    local tmp; tmp="$(mktemp -d)"
+    # See cmd_backup above for why `tmp` is not `local` here either.
+    tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' EXIT
     tar -xf - -C "$tmp"
     for db in vmail amavisd sogo; do
