@@ -102,9 +102,17 @@ jobs:
       # Docker Hub is optional: without the two repository secrets the release
       # goes to GHCR only (the job summary says so), so a missing token never
       # blocks a release.
+      # (the secrets context is not available in a step's `if`; go via env)
+      - name: is Docker Hub configured
+        id: dh
+        env:
+          U: ${{ secrets.DOCKERHUB_USERNAME }}
+          T: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$U" ] && [ -n "$T" ]; then echo "configured=true" >> "$GITHUB_OUTPUT"; else echo "configured=false" >> "$GITHUB_OUTPUT"; fi
       - name: log in to Docker Hub
         id: dockerhub
-        if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+        if: steps.dh.outputs.configured == 'true'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -116,7 +124,7 @@ jobs:
           v="${{ steps.version.outputs.version }}"
           tags="ghcr.io/${{ github.repository }}:$v
           ghcr.io/${{ github.repository }}:latest"
-          if [ "${{ steps.dockerhub.outcome }}" = "success" ]; then
+          if [ "${{ steps.dh.outputs.configured }}" = "true" ]; then
             tags="$tags
           lejmr/iredmail:$v
           lejmr/iredmail:latest"
