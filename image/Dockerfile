@@ -8,6 +8,10 @@
 FROM debian:13-slim
 
 ARG IREDMAIL_VERSION=1.8.8
+# sha256 of the archive/refs/tags/${IREDMAIL_VERSION}.tar.gz below - a git
+# tag is mutable (force-push/retag), unlike a checksum; bump both together
+# on a version bump (`curl -fsSL <url> | sha256sum`).
+ARG IREDMAIL_SHA256=3754794897d18ecdf2d277fa25682c048d479016a56b41bc979ab756a786de6e
 ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -41,6 +45,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         mariadb-server mariadb-client openssl procps net-tools; \
     curl -fsSL -o iRedMail.tar.gz \
         "https://github.com/iredmail/iRedMail/archive/refs/tags/${IREDMAIL_VERSION}.tar.gz"; \
+    echo "${IREDMAIL_SHA256}  iRedMail.tar.gz" | sha256sum -c -; \
     tar xzf iRedMail.tar.gz --strip-components=1; \
     rm iRedMail.tar.gz
 
@@ -143,13 +148,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # MariaDB, Dovecot's non-mail-client services (managesieve, doveadm,
 # old-stats) and iRedAPD's policy socket are not scoped down by the
 # installer. Force loopback-only explicitly rather than trust the default,
-# and re-open only the two Dovecot listeners that must be public (imap for
-# STARTTLS, imaps).
+# and re-open only the one Dovecot listener row 16 actually allows public:
+# imaps (993). Plaintext imap (143) is NOT in row 16's list, so it is
+# pinned loopback-only explicitly below - iRedMail's own dovecot.conf
+# template already has its own `listen = *` line further down (Dovecot 2.4:
+# last scalar assignment in the file wins), which silently overrode an
+# earlier `sed '1a ...'` global default and left 143 open to the world
+# (found by an nmap scan from a sibling container: `143/tcp open imap`).
 RUN set -eux; \
     sed -i "s/^bind-address.*/bind-address = 127.0.0.1/" /etc/mysql/mariadb.conf.d/50-server.cnf \
         || echo 'bind-address = 127.0.0.1' >> /etc/mysql/mariadb.conf.d/50-server.cnf; \
     sed -i '1a listen = 127.0.0.1' /etc/dovecot/dovecot.conf; \
-    printf '\nservice imap-login {\n  inet_listener imap {\n    listen = *\n  }\n  inet_listener imaps {\n    listen = *\n  }\n}\n' \
+    printf '\nservice imap-login {\n  inet_listener imap {\n    listen = 127.0.0.1\n  }\n  inet_listener imaps {\n    listen = *\n  }\n}\n' \
         >> /etc/dovecot/dovecot.conf; \
     printf '\nservice pop3-login {\n  inet_listener pop3 {\n    listen = 127.0.0.1\n  }\n  inet_listener pop3s {\n    listen = 127.0.0.1\n  }\n}\nservice managesieve-login {\n  inet_listener sieve {\n    listen = 127.0.0.1\n  }\n}\n' \
         >> /etc/dovecot/dovecot.conf; \
@@ -173,6 +183,22 @@ RUN set -eux; \
 # instead of the acceptance suite's `554 5.7.1 ... Relay access denied`
 # (row 8). Pin it to the pre-3.6 hard-reject behaviour explicitly.
 RUN postconf -e "smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination"
+
+# --- Row 5: quota is checked, not just configured -----------------------
+# iRedMail's own generated main.cf puts Dovecot's quota-status policy
+# service (127.0.0.1:12340, whose quota_status_overquota literally IS
+# row 5's expected "552 5.2.2 Mailbox is full") in
+# smtpd_recipient_restrictions, AFTER permit_sasl_authenticated - which
+# unconditionally PERMITs the recipient for every authenticated submission
+# (the normal user flow) before that check is ever reached, and even when
+# reached, no message body exists yet at RCPT time to measure against the
+# quota. Confirmed by sending a 2MB message as a 1MB-quota user over
+# authenticated submission (587): postfix accepted it and dovecot
+# delivered it in full, no 552, no bounce - i.e. quota was silently not
+# enforced despite being "wired". Move the same check to
+# smtpd_end_of_data_restrictions (size is known there, and that list has
+# no earlier permit_sasl_authenticated to bypass it).
+RUN postconf -e "smtpd_end_of_data_restrictions = check_policy_service inet:127.0.0.1:7777, check_policy_service inet:127.0.0.1:12340"
 
 # --- Remove iRedMail's own wildcard DKIM key from amavisd.conf ----------
 # The installer wrote a `dkim_key('build.invalid', ...)` line plus a
@@ -241,7 +267,19 @@ COPY scripts/healthcheck.sh /usr/local/bin/healthcheck.sh
 RUN chmod +x /usr/local/bin/admin /usr/local/bin/healthcheck.sh /entrypoint.sh \
     /usr/local/lib/iredmail/*.sh
 
-VOLUME ["/data/mysql", "/data/vmail", "/data/certs", "/data/overrides", "/data/secrets"]
+# No VOLUME instruction here (deliberately - row 13/#84): Docker
+# auto-provisions an anonymous volume for any VOLUME-declared path a
+# runner doesn't explicitly mount, which makes `mountpoint -q` in
+# require_mountpoints() (common.sh) true for a forgotten /data/mysql too -
+# the exact silent-anonymous-datadir failure #84 exists to catch. Verified
+# by running the image with only some of /data/* bind-mounted: with
+# VOLUME declared, mariadb wrote into an anonymous volume and crash-looped
+# forever (permission-denied on ./ddl_recovery.log, wrong ownership) with
+# no FATAL message; without it, the missing mount is just a plain
+# writable-layer directory and require_mountpoints() correctly refuses to
+# start. compose.yaml (repo root and test/) already declares the real
+# named volumes for these paths - nothing needs Docker's anonymous-volume
+# fallback.
 
 # 25 smtp, 465 smtps, 587 submission, 993 imaps, 443 https, 80 acme
 EXPOSE 25 465 587 993 443 80

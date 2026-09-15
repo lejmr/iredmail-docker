@@ -74,7 +74,16 @@ quota_to_mb() {
 # generate_dkim_key <domain>: one 2048-bit RSA key per domain, never
 # reused/shared across domains (#50/#92 - no wildcard key).
 generate_dkim_key() {
-    local domain="$1" key="${DKIM_DIR}/${domain}.pem"
+    # Two `local`s, not one: `local domain="$1" key="...${domain}..."`
+    # evaluates the second value before the first assignment takes
+    # effect, so `$domain` there is whatever `domain` (if any) happens to
+    # be in an OUTER caller's scope, not this function's argument - it
+    # only "worked" when called from cmd_domain_add (which itself has a
+    # `local domain`), and broke with "domain: unbound variable" when
+    # called from admin restore's regenerate_amavis_dkim_include (which
+    # uses `d`, not `domain`) - found by testing `admin restore`.
+    local domain="$1"
+    local key="${DKIM_DIR}/${domain}.pem"
     mkdir -p "$DKIM_DIR"
     if [ ! -f "$key" ]; then
         openssl genrsa -out "$key" 2048 >/dev/null 2>&1
@@ -86,7 +95,10 @@ generate_dkim_key() {
 # dkim_dns_record <domain> -> the exact TXT record value to publish at
 # dkim._domainkey.<domain>.
 dkim_dns_record() {
-    local domain="$1" key="${DKIM_DIR}/${domain}.pem" pub
+    # See generate_dkim_key above for why these are separate `local`s.
+    local domain="$1"
+    local key="${DKIM_DIR}/${domain}.pem"
+    local pub
     pub="$(openssl rsa -in "$key" -pubout -outform DER 2>/dev/null | base64 -w0)"
     printf 'v=DKIM1; k=rsa; p=%s' "$pub"
 }
