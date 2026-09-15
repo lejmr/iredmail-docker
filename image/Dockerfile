@@ -184,6 +184,22 @@ RUN set -eux; \
 # (row 8). Pin it to the pre-3.6 hard-reject behaviour explicitly.
 RUN postconf -e "smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination"
 
+# --- Row 5: quota is checked, not just configured -----------------------
+# iRedMail's own generated main.cf puts Dovecot's quota-status policy
+# service (127.0.0.1:12340, whose quota_status_overquota literally IS
+# row 5's expected "552 5.2.2 Mailbox is full") in
+# smtpd_recipient_restrictions, AFTER permit_sasl_authenticated - which
+# unconditionally PERMITs the recipient for every authenticated submission
+# (the normal user flow) before that check is ever reached, and even when
+# reached, no message body exists yet at RCPT time to measure against the
+# quota. Confirmed by sending a 2MB message as a 1MB-quota user over
+# authenticated submission (587): postfix accepted it and dovecot
+# delivered it in full, no 552, no bounce - i.e. quota was silently not
+# enforced despite being "wired". Move the same check to
+# smtpd_end_of_data_restrictions (size is known there, and that list has
+# no earlier permit_sasl_authenticated to bypass it).
+RUN postconf -e "smtpd_end_of_data_restrictions = check_policy_service inet:127.0.0.1:7777, check_policy_service inet:127.0.0.1:12340"
+
 # --- Remove iRedMail's own wildcard DKIM key from amavisd.conf ----------
 # The installer wrote a `dkim_key('build.invalid', ...)` line plus a
 # catch-all `@dkim_signature_options_bysender_maps` ('.' => ...) into
