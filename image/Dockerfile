@@ -200,6 +200,21 @@ RUN postconf -e "smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authe
 # no earlier permit_sasl_authenticated to bypass it).
 RUN postconf -e "smtpd_end_of_data_restrictions = check_policy_service inet:127.0.0.1:7777, check_policy_service inet:127.0.0.1:12340"
 
+# Dovecot's quota-status service (127.0.0.1:12340, above) is its own
+# "protocol" context (distinct from imap/lmtp/lda) and does not inherit
+# the top-level `mail_plugins { quota = yes ... }` block the way the named
+# imap/lmtp/lda protocol sections do - without an explicit `protocol
+# quota-status { mail_plugins { quota = yes } }` stanza (missing from
+# iRedMail's own generated dovecot.conf), the service can't compute quota
+# at all and returns a bare "action=\n\n" to every policy request; Postfix
+# treats that empty action as its own default (DUNNO, i.e. permit) rather
+# than logging an error, so delivery to an already-over-quota mailbox was
+# silently accepted instead of getting `quota_status_overquota`'s 552 -
+# confirmed with a raw postfix policy-protocol probe against the running
+# service both before (blank) and after (correct "552 5.2.2 Mailbox is
+# full") adding this stanza.
+RUN printf '\nprotocol quota-status {\n  mail_plugins {\n    quota = yes\n  }\n}\n' >> /etc/dovecot/dovecot.conf && doveconf -n >/dev/null
+
 # --- Remove iRedMail's own wildcard DKIM key from amavisd.conf ----------
 # The installer wrote a `dkim_key('build.invalid', ...)` line plus a
 # catch-all `@dkim_signature_options_bysender_maps` ('.' => ...) into
