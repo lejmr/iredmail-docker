@@ -51,6 +51,14 @@ that each server answers on SMTP/IMAP/HTTPS/ActiveSync/CalDAV and exposes
 the `admin` management contract documented in
 `test/admin-shims/iredmail-official.sh`'s header comment.
 
+## CalDAV/CardDAV principal URL
+
+SOGo's own DAV endpoint (row 12) is `/SOGo/dav/<user>/`, not the server
+root - a `PROPFIND` there returns `calendar-home-set`/`addressbook-home-set`
+pointing at `/SOGo/dav/<user>/Calendar/` and `.../Contacts/`. There is no
+`/.well-known/caldav` redirect or DAV handler at `/` in this image's nginx
+config; a client (and the test) must address `/SOGo/dav/<user>/` directly.
+
 ## The `admin` contract
 
 The suite's only `docker compose exec` is `exec <service> admin <args...>`.
