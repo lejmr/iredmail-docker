@@ -147,7 +147,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN set -eux; \
     sed -i "s/^bind-address.*/bind-address = 127.0.0.1/" /etc/mysql/mariadb.conf.d/50-server.cnf \
         || echo 'bind-address = 127.0.0.1' >> /etc/mysql/mariadb.conf.d/50-server.cnf; \
-    sed -i '1i listen = 127.0.0.1, ::1' /etc/dovecot/dovecot.conf; \
+    sed -i '1a listen = 127.0.0.1, ::1' /etc/dovecot/dovecot.conf; \
     printf '\nservice imap-login {\n  inet_listener imap { address = *, :: }\n  inet_listener imaps { address = *, :: }\n}\n' \
         >> /etc/dovecot/dovecot.conf; \
     grep -q '^\$inet_socket_bind' /etc/amavis/conf.d/50-user 2>/dev/null || \
