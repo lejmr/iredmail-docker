@@ -38,4 +38,15 @@ fi
 # table + numbered scripts) - a no-op today, the hook for the next image.
 /usr/local/lib/iredmail/migrate.sh
 
+# `postfix check` creates/repairs the whole queue directory tree (incl.
+# /var/spool/postfix/private, where Dovecot's auth and lmtp sockets bind)
+# with correct ownership *before* supervisord starts anything. Without
+# this, supervisord launches postfix and dovecot together and dovecot
+# loses the race the first time /var/spool/postfix/private does not exist
+# yet ("bind(.../dovecot-auth) failed: No such file or directory") - it
+# self-heals via autorestart, but leaves Error: lines in the startup log
+# (row 1: no `error` at startup). Warns (harmless: postqueue/postdrop
+# setgid bits, unrelated to this path) but never fails.
+postfix check || true
+
 exec "$@"
