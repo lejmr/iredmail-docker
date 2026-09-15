@@ -1,0 +1,92 @@
+x-image: &image ${IMAGE:-iredmail/mariadb:stable}
+
+x-common: &common
+  image: *image
+  platform: linux/amd64
+  # ponytail: the official image has no supervisord "all healthy" signal of
+  # its own; probe the three ports the suite actually needs (SMTP, IMAP, HTTPS).
+  healthcheck:
+    test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/25' && bash -c '</dev/tcp/127.0.0.1/993' && bash -c '</dev/tcp/127.0.0.1/443'"]
+    interval: 5s
+    timeout: 5s
+    retries: 40
+    start_period: 180s
+  volumes:
+    - ../test/admin-shims/iredmail-official.sh:/usr/local/bin/admin:ro
+
+# A <-> B routing without public DNS: Postfix's own DNS-based checks
+# (reject_unknown_{sender,recipient}_domain, and the MX lookup for actual
+# delivery) query the resolver directly, bypassing NSS/`/etc/hosts` - so the
+# record has to exist in DNS, not just in a hosts file. A compose network
+# alias equal to each server's own mail domain, set ON that service, is
+# exactly that: it makes Docker's embedded DNS (127.0.0.11) authoritative
+# for e.g. `b.example` pointing at B's container. Neither server has a
+# `relayhost` configured, so each falls back to the peer domain's own A
+# record per RFC 5321 when no MX exists - no transport_maps needed.
+# extra_hosts (a static IP on a fixed subnet) is added too, belt-and-braces,
+# for any check that goes through NSS/`gethostbyname` instead of Postfix's
+# own resolver - harmless, and immune to a gotcha hit while building this:
+# Docker Desktop forwards the *host machine's* DNS search domains into the
+# container, and glibc's resolver tries "b.example.<host search domain>"
+# before the bare name for any short label, which a public wildcard DNS
+# record can silently answer - extra_hosts/NSS "files" has no such
+# search-suffix behaviour and is consulted first.
+services:
+  a:
+    <<: *common
+    hostname: mail.a.example
+    environment:
+      HOSTNAME: mail.a.example
+      FIRST_MAIL_DOMAIN: a.example
+      FIRST_MAIL_DOMAIN_ADMIN_PASSWORD: ${ADMIN_A_PASSWORD:-TestPassw0rd1!}
+      ROUNDCUBE_DES_KEY: ${A_DES_KEY:-0123456789abcdef0123456789ab}
+      MLMMJADMIN_API_TOKEN: ${A_TOKEN:-a-test-token-0123456789abcdef}
+      USE_FAIL2BAN: "NO"
+    ports:
+      - "12525:25"
+      - "12465:465"
+      - "12587:587"
+      - "12993:993"
+      - "12443:443"
+    networks:
+      default:
+        ipv4_address: 172.30.0.10
+        aliases:
+          - a.example
+          - mail.a.example
+    extra_hosts:
+      - "b.example:172.30.0.11"
+      - "mail.b.example:172.30.0.11"
+
+  b:
+    <<: *common
+    hostname: mail.b.example
+    environment:
+      HOSTNAME: mail.b.example
+      FIRST_MAIL_DOMAIN: b.example
+      FIRST_MAIL_DOMAIN_ADMIN_PASSWORD: ${ADMIN_B_PASSWORD:-TestPassw0rd1!}
+      ROUNDCUBE_DES_KEY: ${B_DES_KEY:-fedcba9876543210fedcba987654}
+      MLMMJADMIN_API_TOKEN: ${B_TOKEN:-b-test-token-0123456789abcdef}
+      USE_FAIL2BAN: "NO"
+    ports:
+      - "22525:25"
+      - "22465:465"
+      - "22587:587"
+      - "22993:993"
+      - "22443:443"
+    networks:
+      default:
+        ipv4_address: 172.30.0.11
+        aliases:
+          - b.example
+          - mail.b.example
+    extra_hosts:
+      - "a.example:172.30.0.10"
+      - "mail.a.example:172.30.0.10"
+
+networks:
+  default:
+    name: iredmail-acceptance
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
