@@ -49,8 +49,29 @@ for svc in $SERVICES; do
         [ -f /etc/init.d/sogo ] || continue
         mkdir -p /var/run/sogo /var/spool/sogo /var/log/sogo
         chown sogo:sogo /var/run/sogo /var/spool/sogo /var/log/sogo
-        execstart="/usr/sbin/sogod -WOWorkersCount 2 -WOPidFile /var/run/sogo/sogo.pid -WOLogFile /var/log/sogo/sogo.log"
+        # -WONoDetach YES: without it, sogod's watchdog double-forks and
+        # detaches from whatever spawned it (supervisor sees a clean exit
+        # 0 and considers the program "stopped", while the detached
+        # workers linger holding port 20000 - the next autorestart then
+        # fails to bind it).
+        execstart="/usr/sbin/sogod -WONoDetach YES -WOWorkersCount 2 -WOPidFile /var/run/sogo/sogo.pid -WOLogFile /var/log/sogo/sogo.log"
         user=sogo
+    elif [ "$svc" = "iredapd" ]; then
+        # ponytail: iredapd.py self-daemonizes (libs/daemon.py double-fork)
+        # unless --foreground is on argv - same detach-then-orphan failure
+        # mode as sogo above (iredapd.py: `if '--foreground' not in
+        # sys.argv: daemon.daemonize(...)`).
+        unit="$(find_unit "$svc" || true)"
+        mkdir -p /var/log/iredapd
+        execstart="/usr/bin/python3 /opt/iredapd/iredapd.py --foreground"
+    elif [ "$svc" = "iredadmin" ]; then
+        unit="$(find_unit "$svc" || true)"
+        [ -z "$unit" ] && continue
+        mkdir -p /var/run/iredadmin
+        execstart="$(grep -m1 '^ExecStart=' "$unit" | sed 's/^ExecStart=//' || true)"
+        execstart="${execstart#-}"
+        user="$(grep -m1 '^User=' "$unit" | sed 's/^User=//' || true)"
+        workdir="$(grep -m1 '^WorkingDirectory=' "$unit" | sed 's/^WorkingDirectory=//' || true)"
     else
         unit="$(find_unit "$svc" || true)"
         [ -z "$unit" ] && continue
