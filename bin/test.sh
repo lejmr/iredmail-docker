@@ -5,7 +5,10 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IMAGE="${IMAGE:-iredmail/mariadb:stable}"
+IMAGE="${IMAGE:-iredmail-phase-a:dev}"
+# Row 13 (restart + upgrade) needs a second tag; the same tag proves the
+# restart half and the migration path stays exercised on every run.
+export IMAGE IMAGE_NEXT="${IMAGE_NEXT:-$IMAGE}"
 COMPOSE_FILE="${HERE}/test/compose.yaml"
 COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
 # The admin-shim overlay is only correct for the official image - see

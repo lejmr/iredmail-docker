@@ -3,6 +3,9 @@ x-image: &image ${IMAGE:-iredmail/mariadb:stable}
 x-common: &common
   image: *image
   platform: linux/amd64
+  # Same hardening as the documented compose.yaml, so the suite proves it.
+  cap_drop: [ALL]
+  cap_add: [NET_BIND_SERVICE, CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER, SYS_CHROOT, KILL]
   # ponytail: neither image's own HEALTHCHECK is reused here (the official
   # image has none; ours has one, but compose only surfaces a HEALTHCHECK
   # baked into the image, and the suite wants the identical probe against

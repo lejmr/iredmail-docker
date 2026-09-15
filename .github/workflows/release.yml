@@ -67,7 +67,7 @@ jobs:
           IMAGE=iredmail-phase-a:dev bin/test.sh || true
           python3 - <<'PY' | tee rows.md
           import xml.etree.ElementTree as ET, re, collections
-          t = ET.parse('test/junit.xml').getroot()
+          t = ET.parse('test-results/junit.xml').getroot()
           rows = collections.OrderedDict()
           for c in t.iter('testcase'):
               m = re.match(r'test_row(\d+)', c.get('name', ''))
