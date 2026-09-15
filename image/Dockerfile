@@ -143,13 +143,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # MariaDB, Dovecot's non-mail-client services (managesieve, doveadm,
 # old-stats) and iRedAPD's policy socket are not scoped down by the
 # installer. Force loopback-only explicitly rather than trust the default,
-# and re-open only the two Dovecot listeners that must be public (imap for
-# STARTTLS, imaps).
+# and re-open only the one Dovecot listener row 16 actually allows public:
+# imaps (993). Plaintext imap (143) is NOT in row 16's list, so it is
+# pinned loopback-only explicitly below - iRedMail's own dovecot.conf
+# template already has its own `listen = *` line further down (Dovecot 2.4:
+# last scalar assignment in the file wins), which silently overrode an
+# earlier `sed '1a ...'` global default and left 143 open to the world
+# (found by an nmap scan from a sibling container: `143/tcp open imap`).
 RUN set -eux; \
     sed -i "s/^bind-address.*/bind-address = 127.0.0.1/" /etc/mysql/mariadb.conf.d/50-server.cnf \
         || echo 'bind-address = 127.0.0.1' >> /etc/mysql/mariadb.conf.d/50-server.cnf; \
     sed -i '1a listen = 127.0.0.1' /etc/dovecot/dovecot.conf; \
-    printf '\nservice imap-login {\n  inet_listener imap {\n    listen = *\n  }\n  inet_listener imaps {\n    listen = *\n  }\n}\n' \
+    printf '\nservice imap-login {\n  inet_listener imap {\n    listen = 127.0.0.1\n  }\n  inet_listener imaps {\n    listen = *\n  }\n}\n' \
         >> /etc/dovecot/dovecot.conf; \
     printf '\nservice pop3-login {\n  inet_listener pop3 {\n    listen = 127.0.0.1\n  }\n  inet_listener pop3s {\n    listen = 127.0.0.1\n  }\n}\nservice managesieve-login {\n  inet_listener sieve {\n    listen = 127.0.0.1\n  }\n}\n' \
         >> /etc/dovecot/dovecot.conf; \
@@ -241,7 +246,19 @@ COPY scripts/healthcheck.sh /usr/local/bin/healthcheck.sh
 RUN chmod +x /usr/local/bin/admin /usr/local/bin/healthcheck.sh /entrypoint.sh \
     /usr/local/lib/iredmail/*.sh
 
-VOLUME ["/data/mysql", "/data/vmail", "/data/certs", "/data/overrides", "/data/secrets"]
+# No VOLUME instruction here (deliberately - row 13/#84): Docker
+# auto-provisions an anonymous volume for any VOLUME-declared path a
+# runner doesn't explicitly mount, which makes `mountpoint -q` in
+# require_mountpoints() (common.sh) true for a forgotten /data/mysql too -
+# the exact silent-anonymous-datadir failure #84 exists to catch. Verified
+# by running the image with only some of /data/* bind-mounted: with
+# VOLUME declared, mariadb wrote into an anonymous volume and crash-looped
+# forever (permission-denied on ./ddl_recovery.log, wrong ownership) with
+# no FATAL message; without it, the missing mount is just a plain
+# writable-layer directory and require_mountpoints() correctly refuses to
+# start. compose.yaml (repo root and test/) already declares the real
+# named volumes for these paths - nothing needs Docker's anonymous-volume
+# fallback.
 
 # 25 smtp, 465 smtps, 587 submission, 993 imaps, 443 https, 80 acme
 EXPOSE 25 465 587 993 443 80

@@ -8,6 +8,14 @@ if [ ! -f "${SECRETS_DIR}/.initialized" ]; then
     /usr/local/lib/iredmail/first-start.sh
 fi
 
+# row 13/#84: /etc and /opt are NOT volumes - a new container (plain
+# `docker compose down` + `up`, or an upgrade) always starts from the
+# image's pristine TEMP_*_PASSWD / build.invalid config, no matter what
+# .initialized (on the /data/secrets volume) says. Re-render every start,
+# not only first boot - see render-config.sh for what broke without this
+# (every technical account's MariaDB auth, plus the TLS cert symlinks).
+/usr/local/lib/iredmail/render-config.sh
+
 # CLAMAV=0 (default, decision 3): iRedMail cannot skip installing ClamAV at
 # install time, so it is disabled at runtime instead - its two supervisord
 # programs are turned off and Amavis is routed around it (no @av_scanners
