@@ -8,12 +8,15 @@ set -euo pipefail
 
 TRANSPORT=/etc/postfix/transport
 : > "$TRANSPORT"
+peer_ips=""
 IFS=','
 for pair in ${PEER_DOMAINS:-}; do
     [ -z "$pair" ] && continue
     domain="${pair%%=*}"
     host="${pair#*=}"
     echo "${domain}  smtp:[${host}]:25" >> "$TRANSPORT"
+    ip="$(getent hosts "$host" 2>/dev/null | awk '{print $1; exit}')"
+    [ -n "$ip" ] && peer_ips="${peer_ips} ${ip}/32"
 done
 unset IFS
 
@@ -27,3 +30,12 @@ case "$current" in
     "hash:${TRANSPORT}"*) : ;; # already first in the list
     *) postconf -e "transport_maps = hash:${TRANSPORT}, ${current}" ;;
 esac
+
+# Trust the peer containers themselves (permit_mynetworks): without a
+# public MX/A record for a peer's domain, B's own reject_unknown_sender_domain
+# (smtpd_sender_restrictions) rejects A's mail with "450 4.1.8 ... Domain not
+# found" - permit_mynetworks runs ahead of that check and skips it, same as
+# it already skips smtpd_relay_restrictions for these containers. Rebuilt
+# from a fixed base every start (not appended to the current value) so a
+# peer's IP changing across a recreate never leaves a stale entry behind.
+postconf -e "mynetworks = 127.0.0.0/8${peer_ips}"

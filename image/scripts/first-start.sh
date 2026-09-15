@@ -16,6 +16,12 @@ mkdir -p /data/mysql /run/mysqld
 chown -R mysql:mysql /data/mysql /run/mysqld
 mariadb-install-db --datadir=/data/mysql --user=mysql --skip-name-resolve >/dev/null
 
+# A fresh named volume mounts as root:root 0755 - dovecot's LDA/IMAP run as
+# vmail:vmail (STORAGE_BASE_DIR=/var/vmail -> /data/vmail) and need to
+# create the per-domain/per-user Maildir tree under it themselves, or every
+# delivery fails ("mkdir ... Permission denied", row 4/6).
+chown vmail:vmail /data/vmail
+
 mysqld_safe --datadir=/data/mysql --skip-networking=0 --bind-address=127.0.0.1 &
 for i in $(seq 1 60); do mysqladmin ping --silent 2>/dev/null && break; sleep 1; done
 mysqladmin ping
