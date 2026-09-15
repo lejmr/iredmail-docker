@@ -29,22 +29,31 @@ echo "; systemd units iRedMail's installer wrote - do not hand-edit."
 } > "$OUT"
 
 for svc in $SERVICES; do
-    unit="$(find_unit "$svc" || true)"
-    [ -z "$unit" ] && continue
+    user=""; workdir=""; unit=""
 
     if [ "$svc" = "nginx" ]; then
         execstart="/usr/sbin/nginx -g 'daemon off;'"
     elif [ "$svc" = "mariadb" ]; then
         execstart="/usr/sbin/mariadbd --user=mysql"
+    elif [ "$svc" = "sogo" ]; then
+        # ponytail: Debian's sogo package ships only /etc/init.d/sogo, no
+        # systemd unit to read ExecStart= from - same DAEMON_OPTS as that
+        # script, not re-derived.
+        [ -f /etc/init.d/sogo ] || continue
+        mkdir -p /var/run/sogo /var/spool/sogo /var/log/sogo
+        chown sogo:sogo /var/run/sogo /var/spool/sogo /var/log/sogo
+        execstart="/usr/sbin/sogod -WOWorkersCount 2 -WOPidFile /var/run/sogo/sogo.pid -WOLogFile /var/log/sogo/sogo.log"
+        user=sogo
     else
+        unit="$(find_unit "$svc" || true)"
+        [ -z "$unit" ] && continue
         execstart="$(grep -m1 '^ExecStart=' "$unit" | sed 's/^ExecStart=//' || true)"
         # strip a leading '-' (systemd: ignore exit status marker)
         execstart="${execstart#-}"
+        user="$(grep -m1 '^User=' "$unit" | sed 's/^User=//' || true)"
+        workdir="$(grep -m1 '^WorkingDirectory=' "$unit" | sed 's/^WorkingDirectory=//' || true)"
     fi
     [ -z "$execstart" ] && continue
-
-    user="$(grep -m1 '^User=' "$unit" | sed 's/^User=//' || true)"
-    workdir="$(grep -m1 '^WorkingDirectory=' "$unit" | sed 's/^WorkingDirectory=//' || true)"
 
     priority=$((priority + 10))
     {
@@ -62,7 +71,7 @@ for svc in $SERVICES; do
         echo "stderr_logfile=/dev/stderr"
         echo "stderr_logfile_maxbytes=0"
     } >> "$OUT"
-    echo "supervisord: added [program:${svc}] from ${unit}"
+    echo "supervisord: added [program:${svc}] from ${unit:-init.d/built-in}"
 done
 
 echo "--- generated $OUT ---"
