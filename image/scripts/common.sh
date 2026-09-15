@@ -12,6 +12,7 @@ set -euo pipefail
 SECRETS_DIR=/data/secrets
 DKIM_DIR=/var/lib/dkim
 AMAVIS_DKIM_INCLUDE=/etc/amavis/conf.d/60-dkim-domains
+# shellcheck disable=SC2034  # used by image/scripts/admin, which sources this file
 VMAIL_STORAGE_BASE=/var/vmail/vmail1
 
 secret() {
