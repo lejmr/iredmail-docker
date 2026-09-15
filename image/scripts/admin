@@ -1,0 +1,190 @@
+#!/bin/bash
+# admin - the management contract for this image (ACCEPTANCE.md rows 2-5,
+# 14, 17). No extra deps beyond what the image already ships (bash, mysql
+# client, doveadm, openssl, tar).
+set -euo pipefail
+. /usr/local/lib/iredmail/common.sh
+
+usage() {
+    cat <<'EOF'
+Usage: admin <command> [args]
+
+  domain add <domain>                 add a domain, print MX + DKIM TXT
+  domain rm <domain>                  remove a domain and all its mail
+  domain list                         list domains
+
+  user add <addr> --password <p> --quota <1G|512M|...>
+  user rm <addr>
+  user list [domain]
+  user quota <addr> <1G|512M|...>
+  user passwd <addr> <new-password>
+
+  dkim <domain>                       print the DKIM DNS TXT record
+
+  backup                              tar (SQL dumps + vmail + dkim + certs) to stdout
+  restore                             restore from stdin, into an EMPTY server
+EOF
+}
+
+cmd_domain_add() {
+    local domain="$1"
+    [ -z "$domain" ] && { echo "usage: admin domain add <domain>" >&2; exit 2; }
+    if mysql_admin -N -e "SELECT 1 FROM domain WHERE domain='${domain}';" | grep -q 1; then
+        echo "domain ${domain} already exists" >&2; exit 1
+    fi
+    mysql_admin -e "INSERT INTO domain (domain, transport, settings, created)
+                     VALUES ('${domain}', 'dovecot', 'default_user_quota:1024;', NOW());"
+    regenerate_amavis_dkim_include
+    echo "domain added: ${domain}"
+    echo "MX record:  ${domain}.  IN MX 10 $(mx_hostname)."
+    echo "DKIM TXT:   dkim._domainkey.${domain}.  IN TXT \"$(dkim_dns_record "$domain")\""
+}
+
+cmd_domain_rm() {
+    local domain="$1"
+    [ -z "$domain" ] && { echo "usage: admin domain rm <domain>" >&2; exit 2; }
+    local users
+    users="$(mysql_admin -N -e "SELECT username FROM mailbox WHERE domain='${domain}';")"
+    for u in $users; do cmd_user_rm "$u" || true; done
+    mysql_admin -e "DELETE FROM domain WHERE domain='${domain}';"
+    mysql_admin -e "DELETE FROM domain_admins WHERE domain='${domain}';"
+    rm -f "${DKIM_DIR}/${domain}.pem"
+    rm -rf "${VMAIL_STORAGE_BASE:?}/${domain}"
+    regenerate_amavis_dkim_include
+    echo "domain removed: ${domain}"
+}
+
+cmd_domain_list() {
+    mysql_admin -N -e "SELECT domain FROM domain WHERE active=1 ORDER BY domain;"
+}
+
+cmd_user_add() {
+    local addr="$1"; shift
+    local password="" quota="1G"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --password) password="$2"; shift 2 ;;
+            --quota) quota="$2"; shift 2 ;;
+            *) echo "unknown option: $1" >&2; exit 2 ;;
+        esac
+    done
+    [ -z "$addr" ] && { echo "usage: admin user add <addr> --password <p> --quota <q>" >&2; exit 2; }
+    [ -z "$password" ] && { echo "--password is required" >&2; exit 2; }
+    local user="${addr%@*}" domain="${addr#*@}"
+    if ! mysql_admin -N -e "SELECT 1 FROM domain WHERE domain='${domain}';" | grep -q 1; then
+        echo "domain ${domain} does not exist - 'admin domain add ${domain}' first" >&2; exit 1
+    fi
+    if mysql_admin -N -e "SELECT 1 FROM mailbox WHERE username='${addr}';" | grep -q 1; then
+        echo "user ${addr} already exists" >&2; exit 1
+    fi
+    local hash maildir quota_mb
+    hash="$(hash_password "$password")"
+    maildir="$(hashed_maildir "$domain" "$user")"
+    quota_mb="$(quota_to_mb "$quota")"
+    mysql_admin -e "INSERT INTO mailbox
+        (username, password, name, storagebasedirectory, storagenode, maildir,
+         quota, domain, active, passwordlastchange, created)
+        VALUES ('${addr}', '${hash}', '${user}', '/var/vmail', 'vmail1',
+                '${maildir}', ${quota_mb}, '${domain}', 1, NOW(), NOW());"
+    mysql_admin -e "INSERT INTO forwardings (address, forwarding, domain, dest_domain, is_forwarding)
+                     VALUES ('${addr}', '${addr}', '${domain}', '${domain}', 1);"
+    echo "user added: ${addr} (quota ${quota})"
+}
+
+cmd_user_rm() {
+    local addr="$1"
+    [ -z "$addr" ] && { echo "usage: admin user rm <addr>" >&2; exit 2; }
+    local domain maildir
+    domain="${addr#*@}"
+    maildir="$(mysql_admin -N -e "SELECT maildir FROM mailbox WHERE username='${addr}';")"
+    mysql_admin -e "DELETE FROM mailbox WHERE username='${addr}';"
+    mysql_admin -e "DELETE FROM forwardings WHERE address='${addr}' OR forwarding='${addr}';"
+    [ -n "$maildir" ] && rm -rf "${VMAIL_STORAGE_BASE:?}/${maildir}"
+    echo "user removed: ${addr}"
+}
+
+cmd_user_list() {
+    local domain="${1:-}"
+    if [ -n "$domain" ]; then
+        mysql_admin -N -e "SELECT username FROM mailbox WHERE domain='${domain}' ORDER BY username;"
+    else
+        mysql_admin -N -e "SELECT username FROM mailbox ORDER BY username;"
+    fi
+}
+
+cmd_user_quota() {
+    local addr="$1" quota="$2" quota_mb
+    [ -z "$addr" ] || [ -z "$quota" ] && { echo "usage: admin user quota <addr> <q>" >&2; exit 2; }
+    quota_mb="$(quota_to_mb "$quota")"
+    mysql_admin -e "UPDATE mailbox SET quota=${quota_mb} WHERE username='${addr}';"
+    doveadm quota recalc -u "$addr" >/dev/null 2>&1 || true
+    echo "quota set: ${addr} -> ${quota}"
+}
+
+cmd_user_passwd() {
+    local addr="$1" password="$2" hash
+    [ -z "$addr" ] || [ -z "$password" ] && { echo "usage: admin user passwd <addr> <password>" >&2; exit 2; }
+    hash="$(hash_password "$password")"
+    mysql_admin -e "UPDATE mailbox SET password='${hash}', passwordlastchange=NOW() WHERE username='${addr}';"
+    echo "password changed: ${addr}"
+}
+
+cmd_dkim() {
+    local domain="$1"
+    [ -z "$domain" ] && { echo "usage: admin dkim <domain>" >&2; exit 2; }
+    generate_dkim_key "$domain"
+    echo "dkim._domainkey.${domain}.  IN TXT \"$(dkim_dns_record "$domain")\""
+}
+
+cmd_backup() {
+    # SQL dumps (vmail, amavisd, iredadmin, sogo) + vmail store + dkim keys
+    # + certs, as a single tar to stdout. Restore is the exact inverse.
+    local tmp; tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    mkdir -p "$tmp/sql"
+    for db in vmail amavisd sogo; do
+        mysqldump_root --no-tablespaces "$db" > "$tmp/sql/${db}.sql" 2>/dev/null || true
+    done
+    tar -cf - -C / var/vmail var/lib/dkim data/certs -C "$tmp" sql 2>/dev/null
+}
+
+cmd_restore() {
+    local tmp; tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    tar -xf - -C "$tmp"
+    for db in vmail amavisd sogo; do
+        [ -f "$tmp/sql/${db}.sql" ] && mysql_root "$db" < "$tmp/sql/${db}.sql"
+    done
+    rm -rf /var/vmail/* /var/lib/dkim/*
+    cp -a "$tmp/var/vmail/." /var/vmail/ 2>/dev/null || true
+    cp -a "$tmp/var/lib/dkim/." /var/lib/dkim/ 2>/dev/null || true
+    cp -a "$tmp/data/certs/." /data/certs/ 2>/dev/null || true
+    regenerate_amavis_dkim_include
+    echo "restore complete"
+}
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+    domain)
+        sub="${1:-}"; shift || true
+        case "$sub" in
+            add) cmd_domain_add "${1:-}" ;;
+            rm) cmd_domain_rm "${1:-}" ;;
+            list) cmd_domain_list ;;
+            *) usage; exit 2 ;;
+        esac ;;
+    user)
+        sub="${1:-}"; shift || true
+        case "$sub" in
+            add) cmd_user_add "$@" ;;
+            rm) cmd_user_rm "${1:-}" ;;
+            list) cmd_user_list "${1:-}" ;;
+            quota) cmd_user_quota "${1:-}" "${2:-}" ;;
+            passwd) cmd_user_passwd "${1:-}" "${2:-}" ;;
+            *) usage; exit 2 ;;
+        esac ;;
+    dkim) cmd_dkim "${1:-}" ;;
+    backup) cmd_backup ;;
+    restore) cmd_restore ;;
+    *) usage; [ "$cmd" = "" ] && exit 2 || exit 2 ;;
+esac

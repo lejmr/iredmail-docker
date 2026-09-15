@@ -1,0 +1,66 @@
+# Two-server harness for the rows that need it (ACCEPTANCE.md 6/7/9,
+# swaks/DKIM proof between A and B). Own project name and port offset per
+# the maintainer's instructions - never collides with anything else:
+#   docker compose -p imagea -f compose.yaml up -d --build
+#
+# A and B exchange mail without public DNS via PEER_DOMAINS
+# (image/scripts/peer-domains.sh writes it into Postfix's transport_maps).
+services:
+  mail-a:
+    build: ./image
+    hostname: mail.a.example
+    environment:
+      MAIL_DOMAIN: a.example
+      HOSTNAME_FQDN: mail.a.example
+      POSTMASTER_PASSWORD: a-postmaster-pw
+      PEER_DOMAINS: "b.example=mail-b"
+      CLAMAV: "0"
+    volumes:
+      - a-mysql:/data/mysql
+      - a-vmail:/data/vmail
+      - a-certs:/data/certs
+      - a-overrides:/data/overrides
+    ports:
+      - "10025:25"
+      - "10587:587"
+      - "10993:993"
+      - "10443:443"
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE, CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER]
+    networks: [mail]
+
+  mail-b:
+    build: ./image
+    hostname: mail.b.example
+    environment:
+      MAIL_DOMAIN: b.example
+      HOSTNAME_FQDN: mail.b.example
+      POSTMASTER_PASSWORD: b-postmaster-pw
+      PEER_DOMAINS: "a.example=mail-a"
+      CLAMAV: "0"
+    volumes:
+      - b-mysql:/data/mysql
+      - b-vmail:/data/vmail
+      - b-certs:/data/certs
+      - b-overrides:/data/overrides
+    ports:
+      - "10026:25"
+      - "10588:587"
+      - "10994:993"
+      - "10444:443"
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE, CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER]
+    networks: [mail]
+
+networks:
+  mail: {}
+
+volumes:
+  a-mysql: {}
+  a-vmail: {}
+  a-certs: {}
+  a-overrides: {}
+  b-mysql: {}
+  b-vmail: {}
+  b-certs: {}
+  b-overrides: {}
