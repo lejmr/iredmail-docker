@@ -52,7 +52,6 @@ GRANT ALL PRIVILEGES ON sogo.* TO 'sogo'@'127.0.0.1';
 GRANT SELECT ON vmail.* TO 'sogo'@'127.0.0.1';
 CREATE USER IF NOT EXISTS 'iredapd'@'127.0.0.1' IDENTIFIED BY '${IREDAPD_DB_PW}';
 GRANT SELECT ON vmail.* TO 'iredapd'@'127.0.0.1';
-GRANT SELECT,INSERT,UPDATE,DELETE ON vmail.greylisting_whitelists TO 'iredapd'@'127.0.0.1';
 -- least-privilege technical account for the admin CLI (#57): only vmail db.
 CREATE USER IF NOT EXISTS 'admin_cli'@'127.0.0.1' IDENTIFIED BY '${ADMIN_CLI_PW}';
 GRANT SELECT,INSERT,DELETE,UPDATE ON vmail.* TO 'admin_cli'@'127.0.0.1';

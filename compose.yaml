@@ -7,7 +7,9 @@
 # (image/scripts/peer-domains.sh writes it into Postfix's transport_maps).
 services:
   mail-a:
+    image: iredmail-phase-a:dev
     build: ./image
+    platform: linux/amd64
     hostname: mail.a.example
     environment:
       MAIL_DOMAIN: a.example
@@ -30,7 +32,9 @@ services:
     networks: [mail]
 
   mail-b:
+    image: iredmail-phase-a:dev
     build: ./image
+    platform: linux/amd64
     hostname: mail.b.example
     environment:
       MAIL_DOMAIN: b.example
