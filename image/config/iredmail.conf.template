@@ -1,0 +1,30 @@
+# iRedMail unattended-install config file.
+# Built by image/Dockerfile from this template with envsubst.
+# Format required by iRedMail.sh when AUTO_USE_EXISTING_CONFIG_FILE=y:
+# a sequence of `export VAR='value'` lines, terminated by a line that is
+# exactly `#EOF` (see iRedMail/dialog/config_via_dialog.sh in the upstream
+# repo - this file mirrors what that script writes, without the dialog).
+#
+# BUILD_DOMAIN is a throw-away domain: iRedMail cannot finish an install
+# without at least one mail domain. The real domain (MAIL_DOMAIN env var)
+# is created at first container start by scripts/first-start.sh, and this
+# placeholder domain + its postmaster account are deleted at the same time.
+export STORAGE_BASE_DIR='/var/vmail'
+export DISABLE_WEB_SERVER='NO'
+export WEB_SERVER='NGINX'
+export BACKEND_ORIG='MARIADB'
+export BACKEND='MYSQL'
+export VMAIL_DB_BIND_PASSWD='${VMAIL_DB_BIND_PASSWD}'
+export VMAIL_DB_ADMIN_PASSWD='${VMAIL_DB_ADMIN_PASSWD}'
+export MLMMJADMIN_API_AUTH_TOKEN='${MLMMJADMIN_API_AUTH_TOKEN}'
+export MYSQL_ROOT_PASSWD='${MYSQL_ROOT_PASSWD}'
+export FIRST_DOMAIN='${BUILD_DOMAIN}'
+export DOMAIN_ADMIN_PASSWD_PLAIN='${BUILD_DOMAIN_ADMIN_PASSWD}'
+export USE_IREDADMIN='YES'
+export USE_SOGO='YES'
+export AMAVISD_DB_PASSWD='${AMAVISD_DB_PASSWD}'
+export IREDADMIN_DB_PASSWD='${IREDADMIN_DB_PASSWD}'
+export SOGO_DB_PASSWD='${SOGO_DB_PASSWD}'
+export SOGO_SIEVE_MASTER_PASSWD='${SOGO_SIEVE_MASTER_PASSWD}'
+export IREDAPD_DB_PASSWD='${IREDAPD_DB_PASSWD}'
+#EOF

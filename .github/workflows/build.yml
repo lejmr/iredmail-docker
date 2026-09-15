@@ -1,0 +1,66 @@
+name: build phase-A image
+
+# The maintainer's amd64 Docker build under this host's QEMU emulation
+# (Colima on Apple Silicon) segfaults inside Python 3.13's postinst
+# byte-compilation (py3compile -> `python3.13 -c '...'` exits with signal
+# 11) partway through the unattended iRedMail install - see DEVELOPMENT.md
+# "Build" section. GitHub's own runners are real amd64, so the build (and
+# the acceptance suite once it exists) live here instead of being proven
+# locally.
+
+on:
+  push:
+    branches: [master]
+    paths: ["image/**", ".github/workflows/build.yml"]
+  pull_request:
+    paths: ["image/**", ".github/workflows/build.yml"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build phase-A image
+        uses: docker/build-push-action@v6
+        with:
+          context: image
+          tags: iredmail-phase-a:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Report image size
+        run: docker image inspect --format '{{.Size}}' iredmail-phase-a:ci
+
+      - name: Run acceptance suite against a fresh compose up
+        if: hashFiles('bin/test.sh') != ''
+        run: |
+          docker compose -p imagea -f compose.yaml up -d --build
+          bin/test.sh
+          docker compose -p imagea down -v
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push to GHCR (master only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: docker/build-push-action@v6
+        with:
+          context: image
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.run_number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
