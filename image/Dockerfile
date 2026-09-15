@@ -116,9 +116,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         "$MLMMJADMIN_API_AUTH_TOKEN:TEMP_MLMMJADMIN_API_AUTH_TOKEN" \
     ; do \
         real="${pair%%:*}"; placeholder="${pair##*:}"; \
-        grep -rlZ --include='*' -F "$real" /etc /opt 2>/dev/null \
+        grep -rlZ --include='*' --exclude='*.db' -F "$real" /etc /opt 2>/dev/null \
             | xargs -0 -r sed -i "s#${real}#${placeholder}#g"; \
     done; \
+    postalias /etc/postfix/aliases; newaliases; \
     # Point the state iRedMail just wrote at the runtime volumes.
     # STORAGE_BASE_DIR was /var/vmail, MariaDB's datadir /var/lib/mysql;
     # both become symlinks so every config file iRedMail generated
