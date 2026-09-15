@@ -100,7 +100,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     # data directory and every value derived from these passwords is
     # discarded a few RUN steps below - it never reaches a running
     # container). This is the modern equivalent of the TEMP_VMAIL_DB_*
-    # convention in the legacy mysql/Dockerfile.
+    # convention in the legacy mysql/Dockerfile. The *_PASSWD vars were
+    # exported in the earlier RUN that wrote ./config (a separate shell,
+    # separate layer) - source that file here to get them back.
+    . /opt/iredmail/config; \
     for pair in \
         "$VMAIL_DB_BIND_PASSWD:TEMP_VMAIL_DB_BIND_PASSWD" \
         "$VMAIL_DB_ADMIN_PASSWD:TEMP_VMAIL_DB_ADMIN_PASSWD" \
