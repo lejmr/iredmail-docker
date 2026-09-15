@@ -1,0 +1,21 @@
+; Static half of the DNS sidecar's zone (test/compose.yaml's `dns`
+; service, test/dns/Corefile). IPs match the fixed addresses compose
+; assigns mail-a/mail-b. The dynamic half - DKIM TXT records, which only
+; exist once a server has generated its per-domain key at first start - is
+; $INCLUDE'd from generated/dkim.zone, written by the dns_sidecar fixture
+; in conftest.py. See test/README.md "DNS sidecar".
+$ORIGIN example.
+$TTL 300
+@   IN SOA ns.example. admin.example. ( 1 3600 600 86400 300 )
+@   IN NS ns.example.
+ns  IN A 172.30.0.53
+
+a                   IN A   172.30.0.10
+mail-a.a            IN A   172.30.0.10
+a                   IN MX  10 mail-a.a.example.
+
+b                   IN A   172.30.0.11
+mail-b.b            IN A   172.30.0.11
+b                   IN MX  10 mail-b.b.example.
+
+$INCLUDE /etc/coredns/generated/dkim.zone

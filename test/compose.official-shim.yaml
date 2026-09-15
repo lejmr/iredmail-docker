@@ -1,0 +1,12 @@
+# Overlay for the official iredmail/mariadb:stable image (no admin CLI of
+# its own): adds the admin-shim mount on top of test/compose.yaml.
+#   docker compose -f test/compose.yaml -f test/compose.official-shim.yaml ...
+# bin/test.sh adds this automatically unless IMAGE is set to something else.
+x-admin-shim: &admin-shim
+  - ../test/admin-shims/iredmail-official.sh:/usr/local/bin/admin:ro
+
+services:
+  mail-a:
+    volumes: *admin-shim
+  mail-b:
+    volumes: *admin-shim

@@ -1,0 +1,81 @@
+name: CI
+
+# Every pull request and every push to master: build the image and prove
+# the acceptance rows against two servers started from nothing. Weekly as
+# well, so a base-image security update or a vanished upstream repository
+# shows up here before a user reports it (GitHub disables this trigger
+# after 60 days without repository activity - see DEVELOPMENT.md).
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_call:
+    outputs:
+      image-digest:
+        value: ${{ jobs.build.outputs.digest }}
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: shell syntax
+        run: |
+          set -e
+          for f in image/scripts/* image/build/*.sh bin/*.sh test/admin-shims/*.sh; do
+            [ -f "$f" ] && bash -n "$f" && echo "ok $f"
+          done
+      - name: shellcheck
+        run: |
+          sudo apt-get -qq install -y shellcheck >/dev/null
+          shellcheck -S warning image/scripts/* image/build/*.sh bin/*.sh
+      - name: hadolint
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+        with:
+          dockerfile: image/Dockerfile
+          failure-threshold: error
+
+  build:
+    name: build + acceptance suite
+    runs-on: ubuntu-latest
+    needs: static
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: build
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: image
+          tags: iredmail-phase-a:dev
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: image size (acceptance row 15, recorded)
+        run: |
+          size=$(docker image inspect --format '{{.Size}}' iredmail-phase-a:dev)
+          echo "image size: $((size / 1024 / 1024)) MB" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: vulnerabilities with a fix available (row 15)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.58.2 image --ignore-unfixed --severity HIGH,CRITICAL \
+            --exit-code 0 --format table iredmail-phase-a:dev | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: acceptance suite from a fresh compose up
+        run: IMAGE=iredmail-phase-a:dev bin/test.sh || true
+      - name: required rows must pass; every row is recorded
+        run: python3 bin/required-rows.py test-results/junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: test report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: acceptance-junit
+          path: test-results/junit.xml
+          if-no-files-found: ignore

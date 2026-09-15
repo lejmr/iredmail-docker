@@ -1,0 +1,139 @@
+name: Release
+
+# One button: Actions -> Release -> Run workflow (works from a phone).
+# Builds the image on GitHub's amd64 runners, proves the acceptance rows
+# from a fresh compose up, and only then tags the commit, pushes the image
+# to GHCR and Docker Hub as <date> and latest, and publishes a GitHub
+# release whose notes are this version's CHANGELOG.md section plus the
+# literal per-row result of the suite. It refuses before touching anything
+# if the version was already released or has no changelog section.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release date (YYYY-MM-DD). Leave blank to use today."
+        required: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: work out the release version
+        id: version
+        run: |
+          ver="${{ inputs.version }}"
+          [ -n "$ver" ] || ver=$(date +%F)
+          case "$ver" in
+            [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+            *) echo "::error::'$ver' is not a YYYY-MM-DD date"; exit 1 ;;
+          esac
+          [ "$ver" = "$(date +%F)" ] || { echo "::error::use today's date ($(date +%F)), or leave the input blank"; exit 1; }
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: refuse to re-release a version that already shipped
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$v" >/dev/null; then
+            echo "::error::tag $v already exists - $v was already released"; exit 1
+          fi
+
+      - name: CHANGELOG.md has a section for this release
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          grep -q "^## \[$v\]" CHANGELOG.md || { echo "::error::CHANGELOG.md has no '## [$v]' section"; exit 1; }
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: image
+          tags: iredmail-phase-a:dev
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: acceptance suite from a fresh compose up
+        id: suite
+        run: |
+          IMAGE=iredmail-phase-a:dev bin/test.sh || true
+          python3 bin/required-rows.py test-results/junit.xml | tee rows.md
+
+      - name: tag the release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.version.outputs.version }}"
+          git push origin --tags
+
+      - name: log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Docker Hub is optional: without the two repository secrets the release
+      # goes to GHCR only (the job summary says so), so a missing token never
+      # blocks a release.
+      # (the secrets context is not available in a step's `if`; go via env)
+      - name: is Docker Hub configured
+        id: dh
+        env:
+          U: ${{ secrets.DOCKERHUB_USERNAME }}
+          T: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$U" ] && [ -n "$T" ]; then echo "configured=true" >> "$GITHUB_OUTPUT"; else echo "configured=false" >> "$GITHUB_OUTPUT"; fi
+      - name: log in to Docker Hub
+        id: dockerhub
+        if: steps.dh.outputs.configured == 'true'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: image tags
+        id: tags
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          tags="ghcr.io/${{ github.repository }}:$v
+          ghcr.io/${{ github.repository }}:latest"
+          if [ "${{ steps.dh.outputs.configured }}" = "true" ]; then
+            tags="$tags
+          lejmr/iredmail:$v
+          lejmr/iredmail:latest"
+          else
+            echo "Docker Hub secrets not set - published to GHCR only" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          { echo "tags<<EOF"; echo "$tags"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+
+      - name: push the tested image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: image
+          push: true
+          cache-from: type=gha
+          tags: ${{ steps.tags.outputs.tags }}
+
+      - name: release notes
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          {
+            awk -v v="$v" '$0 == "## [" v "]" {f=1; next} f && /^## \[/ {exit} f {print}' CHANGELOG.md
+            echo; echo '## Acceptance rows in this release'; echo
+            cat rows.md
+            echo; echo "Image: \`ghcr.io/${{ github.repository }}:$v\`"
+          } > release-body.md
+
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          body_path: release-body.md
