@@ -45,7 +45,6 @@ VMAIL_DB_ADMIN_PW="$(secret vmail_admin.pw)"
 AMAVISD_DB_PW="$(secret amavisd.pw)"
 IREDADMIN_DB_PW="$(secret iredadmin.pw)"
 SOGO_DB_PW="$(secret sogo.pw)"
-SOGO_SIEVE_PW="$(secret sogo_sieve.pw)"
 IREDAPD_DB_PW="$(secret iredapd.pw)"
 ADMIN_CLI_PW="$(secret mysql_admin_cli.pw)"
 

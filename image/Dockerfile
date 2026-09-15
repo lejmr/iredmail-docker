@@ -8,6 +8,10 @@
 FROM debian:13-slim
 
 ARG IREDMAIL_VERSION=1.8.8
+# sha256 of the archive/refs/tags/${IREDMAIL_VERSION}.tar.gz below - a git
+# tag is mutable (force-push/retag), unlike a checksum; bump both together
+# on a version bump (`curl -fsSL <url> | sha256sum`).
+ARG IREDMAIL_SHA256=3754794897d18ecdf2d277fa25682c048d479016a56b41bc979ab756a786de6e
 ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -41,6 +45,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         mariadb-server mariadb-client openssl procps net-tools; \
     curl -fsSL -o iRedMail.tar.gz \
         "https://github.com/iredmail/iRedMail/archive/refs/tags/${IREDMAIL_VERSION}.tar.gz"; \
+    echo "${IREDMAIL_SHA256}  iRedMail.tar.gz" | sha256sum -c -; \
     tar xzf iRedMail.tar.gz --strip-components=1; \
     rm iRedMail.tar.gz
 
