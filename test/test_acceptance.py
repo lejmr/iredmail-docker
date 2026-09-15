@@ -23,7 +23,7 @@ import time
 import pytest
 import requests
 
-from conftest import COMPOSE_FILE, wait_for_message
+from conftest import COMPOSE_ARGS, COMPOSE_FILE, wait_for_message
 
 requests.packages.urllib3.disable_warnings()  # self-signed certs in tests
 
@@ -113,7 +113,10 @@ def test_row01_starts_healthy(server_a, server_b):
     statuses = {}
     while time.monotonic() < deadline:
         rows = compose_ps()
-        statuses = {r["Service"]: r.get("Health", "") for r in rows}
+        # Only services that report a Docker HEALTHCHECK - the row is about
+        # the mail server(s) under test, not the harness's own DNS sidecar
+        # (test/compose.yaml's `dns` service has none and always reports "").
+        statuses = {r["Service"]: r.get("Health", "") for r in rows if r.get("Health", "")}
         if statuses and all(v == "healthy" for v in statuses.values()):
             break
         time.sleep(3)
@@ -239,13 +242,17 @@ def test_row05_quota_refuses_over_limit(server_a, fresh_user):
     # RFC 2087: imaplib's getquotaroot already returns both untagged
     # responses it triggers - [0] is the QUOTAROOT line (INBOX <root name>),
     # [1] is the QUOTA line for that root (<root name> (STORAGE used limit)).
-    # 1M = 1048576 bytes is what this server's own STORAGE units turned out
-    # to be (verified against a user created with a known size), not the
-    # traditional RFC 2087 kilobyte unit - assert on that, not on "1024".
+    # STORAGE's unit is server-specific: RFC 2087's own traditional
+    # convention is kilobytes (1M -> 1024), which is what this repo's own
+    # image reports; the official iredmail/mariadb:stable image was found
+    # to report raw bytes instead (1M -> 1048576) - ACCEPTANCE.md row 5 only
+    # asks that "GETQUOTA reports 1M", not a specific wire encoding, so
+    # accept either rather than hard-coding one image's convention.
     typ, data = conn.getquotaroot("INBOX")
     assert typ == "OK", f"GETQUOTAROOT failed: {data!r}"
     quota_line = b" ".join(data[1]) if len(data) > 1 else b""
-    assert b"1048576" in quota_line, f"GETQUOTA did not report 1M (1048576): {quota_line!r}"
+    assert b"1048576" in quota_line or b" 1024 " in quota_line or quota_line.endswith(b"1024)"), (
+        f"GETQUOTA did not report 1M (1024 KB or 1048576 bytes): {quota_line!r}")
     conn.logout()
 
     admin_mail, admin_pw = domain_admin_cred(server_a)
@@ -434,13 +441,16 @@ def test_row13_restart_and_upgrade_preserve_data(server_a, fresh_user):
     assert wait_for_message(conn, subject, timeout=30)
     conn.logout()
 
-    subprocess.run(["docker", "compose", "-f", COMPOSE_FILE, "down"], check=True, timeout=120)
+    subprocess.run(["docker", "compose", *COMPOSE_ARGS, "down"], check=True, timeout=120)
     env = dict(os.environ, IMAGE=image_next)
-    subprocess.run(["docker", "compose", "-f", COMPOSE_FILE, "up", "-d"], check=True,
+    subprocess.run(["docker", "compose", *COMPOSE_ARGS, "up", "-d"], check=True,
                     timeout=600, env=env)
     _wait_port(server_a.host, server_a.ports["imaps"], 300)
 
-    conn = imap_login(server_a, mail, password)
+    # Same race as row 4's restart case: the port accepts TCP before
+    # dovecot's TLS listener is fully up - retry the handshake, not just
+    # the connect (_wait_port only proves the latter).
+    conn = _retry_imap_login(server_a, mail, password)
     assert wait_for_message(conn, subject, timeout=30), "mail lost across upgrade"
     conn.logout()
 
@@ -577,8 +587,8 @@ def test_row16_runs_without_privileged(server_a):
 
 def test_row17_dkim_keys_differ(server_a, server_b):
     """Two servers built from the same image have different DKIM keys"""
-    key_a = server_a.admin("dkim", "show", server_a.domain).stdout.decode()
-    key_b = server_b.admin("dkim", "show", server_b.domain).stdout.decode()
+    key_a = server_a.admin("dkim", server_a.domain).stdout.decode()
+    key_b = server_b.admin("dkim", server_b.domain).stdout.decode()
     assert key_a and key_b, "one of the DKIM records is empty"
     assert key_a != key_b, "A and B publish the same DKIM key (#17)"
 
@@ -641,16 +651,54 @@ def _published_port(container, internal_port):
 def test_row19_works_behind_reverse_proxy(server_a):
     """It works behind my reverse proxy"""
     cname = "row19-nginx-proxy"
+    # Where to reach A from inside the standalone nginx container being
+    # started below. `--add-host <host>:127.0.0.1` (the original approach)
+    # is wrong whenever server_a.host is itself 127.0.0.1 (the default,
+    # compose-managed topology - see test/README.md "Against any other two
+    # servers"): 127.0.0.1 *inside* that new container is itself, not the
+    # docker host, so the proxy_pass could never reach A - it always got a
+    # connection refused/502. Attaching the proxy to the same compose
+    # network and addressing A by its service name (its real internal port,
+    # not the host-published one) reaches it correctly; that network only
+    # exists for the default topology, so fall back to the original
+    # host:port approach (valid when server_a.host names a real reachable
+    # host) otherwise.
+    default_topology = server_a.host == "127.0.0.1" and not os.environ.get("MAIL_A_HOST")
+    if default_topology:
+        docker_run_network_args = ["--network", "iredmail-acceptance"]
+        upstream = f"https://{server_a.compose_service}:443"
+        # A's nginx vhost is keyed on its own hostname (test/compose.yaml's
+        # `hostname: mail.a.example`) two ways at once - a real reverse
+        # proxy in front of a named backend forwards that backend's own
+        # Host *and* its own TLS SNI, not whatever the client dialled (an
+        # IP:port here); without both nginx has no matching server block
+        # and answers 403 (the Host header alone got past the vhost lookup
+        # but not a still-mismatched SNI - found by adding one, then the
+        # other, and watching the 403 persist through the first).
+        backend_host = "mail.a.example"
+    else:
+        docker_run_network_args = [
+            "--add-host", f"{server_a.host}:127.0.0.1" if server_a.host != "127.0.0.1" else "dummy.invalid:127.0.0.1",
+        ]
+        upstream = f"https://{server_a.host}:{server_a.ports['https']}"
+        backend_host = server_a.host
+
+    # nginx:alpine (Alpine) has no ssl-cert-snakeoil package - that path is
+    # Debian's - so generate our own throwaway self-signed cert instead of
+    # assuming one is baked into the image.
     conf = f"""
 events {{}}
 http {{
   server {{
     listen 18443 ssl;
-    ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
-    ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
+    ssl_certificate /etc/nginx/row19.pem;
+    ssl_certificate_key /etc/nginx/row19.key;
     location / {{
-      proxy_pass https://{server_a.host}:{server_a.ports['https']};
+      proxy_pass {upstream};
       proxy_ssl_verify off;
+      proxy_ssl_server_name on;
+      proxy_ssl_name {backend_host};
+      proxy_set_header Host {backend_host};
       proxy_set_header X-Forwarded-For $remote_addr;
       proxy_set_header X-Forwarded-Proto https;
       proxy_set_header X-Forwarded-Host $host;
@@ -663,11 +711,20 @@ http {{
     with open(conf_path, "w") as f:
         f.write(conf)
 
+    cert_path = os.path.join(tmp, "row19.pem")
+    key_path = os.path.join(tmp, "row19.key")
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                     "-keyout", key_path, "-out", cert_path, "-days", "1",
+                     "-subj", "/CN=row19-proxy.example"], check=True, timeout=30,
+                    capture_output=True)
+
     subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
     try:
         subprocess.run(["docker", "run", "-d", "--name", cname,
-                         "--add-host", f"{server_a.host}:127.0.0.1" if server_a.host != "127.0.0.1" else "dummy.invalid:127.0.0.1",
+                         *docker_run_network_args,
                          "-p", "0:18443", "-v", f"{conf_path}:/etc/nginx/nginx.conf:ro",
+                         "-v", f"{cert_path}:/etc/nginx/row19.pem:ro",
+                         "-v", f"{key_path}:/etc/nginx/row19.key:ro",
                          "nginx:alpine"], check=True, timeout=60)
         port = _published_port(cname, 18443)
         _wait_port("127.0.0.1", port, 60)

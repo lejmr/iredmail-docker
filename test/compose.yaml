@@ -3,45 +3,100 @@ x-image: &image ${IMAGE:-iredmail/mariadb:stable}
 x-common: &common
   image: *image
   platform: linux/amd64
-  # ponytail: the official image has no supervisord "all healthy" signal of
-  # its own; probe the three ports the suite actually needs (SMTP, IMAP, HTTPS).
+  # ponytail: neither image's own HEALTHCHECK is reused here (the official
+  # image has none; ours has one, but compose only surfaces a HEALTHCHECK
+  # baked into the image, and the suite wants the identical probe against
+  # both) - a plain TCP probe of the three ports the suite actually needs.
   healthcheck:
     test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/25' && bash -c '</dev/tcp/127.0.0.1/993' && bash -c '</dev/tcp/127.0.0.1/443'"]
     interval: 5s
     timeout: 5s
     retries: 40
     start_period: 180s
-  volumes:
-    - ../test/admin-shims/iredmail-official.sh:/usr/local/bin/admin:ro
 
-# A <-> B routing without public DNS: Postfix's own DNS-based checks
-# (reject_unknown_{sender,recipient}_domain, and the MX lookup for actual
-# delivery) query the resolver directly, bypassing NSS/`/etc/hosts` - so the
-# record has to exist in DNS, not just in a hosts file. A compose network
-# alias equal to each server's own mail domain, set ON that service, is
-# exactly that: it makes Docker's embedded DNS (127.0.0.11) authoritative
-# for e.g. `b.example` pointing at B's container. Neither server has a
-# `relayhost` configured, so each falls back to the peer domain's own A
-# record per RFC 5321 when no MX exists - no transport_maps needed.
-# extra_hosts (a static IP on a fixed subnet) is added too, belt-and-braces,
-# for any check that goes through NSS/`gethostbyname` instead of Postfix's
-# own resolver - harmless, and immune to a gotcha hit while building this:
-# Docker Desktop forwards the *host machine's* DNS search domains into the
-# container, and glibc's resolver tries "b.example.<host search domain>"
-# before the bare name for any short label, which a public wildcard DNS
-# record can silently answer - extra_hosts/NSS "files" has no such
-# search-suffix behaviour and is consulted first.
+# No admin-shim mount here: this repo's own image ships /usr/local/bin/admin
+# natively (image/scripts/admin), and mounting a shim over it would shadow
+# the real CLI. Running against the official iredmail/mariadb:stable image
+# (which has no admin CLI of its own) needs the overlay in
+# test/compose.official-shim.yaml, which adds the mount on top of this file
+# - see bin/test.sh (it adds the overlay automatically for that IMAGE) and
+# test/README.md "The admin contract".
+
+# A <-> B routing without public DNS: this now runs a real DNS sidecar
+# (CoreDNS, pinned coredns/coredns:1.11.3) that both servers use as their
+# resolver (the `dns:` field) and that is authoritative for
+# a.example/b.example - A and MX records static (test/dns/db.example), DKIM
+# TXT records populated at suite start once the servers are healthy (the
+# `dns_sidecar` fixture in conftest.py - see test/README.md "DNS sidecar").
+# This makes row 6's "Authentication-Results: ... dkim=pass" and A -> B
+# delivery both go through a real MX lookup, the way a production
+# deployment's would.
+#
+# (dnsmasq was tried first and dropped: its --txt-record local data is
+# broken in the current 4km3/dnsmasq build - every TXT query for a locally
+# configured name either gets "config error is REFUSED (EDE: not ready)"
+# with no upstream configured, or is silently forwarded upstream instead of
+# answered locally when one is - verified with minimal repro configs before
+# switching. CoreDNS's `file` plugin answers TXT/MX/A alike, correctly.)
+#
+# Earlier note, still true, on why a plain compose network alias was
+# rejected in favour of a dedicated resolver: Docker Desktop forwards the
+# host machine's own DNS search domains into the container's resolv.conf,
+# and Postfix's resolver tries "b.example.<host search domain>" *before*
+# the bare name whenever the name has fewer dots than ndots - some networks
+# resolve that via a public wildcard record, silently sending mail to an
+# unrelated host on the internet instead of the container next to it.
+# Pointing `dns:` only at the sidecar sidesteps the search-domain question
+# entirely rather than relying on NSS "files" ordering to dodge it.
+#
+# PEER_DOMAINS (this repo's own image - image/scripts/peer-domains.sh) is
+# deliberately left UNSET here: it installs a Postfix transport_maps entry
+# that routes straight to the peer container, bypassing MX lookup entirely
+# - exactly the shortcut row 6 must NOT take in this harness. It stays
+# available (and is what the top-level compose.yaml uses) for anyone
+# running two servers without standing up DNS infrastructure of their own.
 services:
-  a:
+  dns:
+    image: coredns/coredns:1.11.3
+    command: ["-conf", "/Corefile"]
+    volumes:
+      - ./dns/Corefile:/Corefile:ro
+      - ./dns/db.example:/etc/coredns/db.example:ro
+      - ./dns/generated:/etc/coredns/generated:ro
+    networks:
+      default:
+        ipv4_address: 172.30.0.53
+
+  mail-a:
     <<: *common
     hostname: mail.a.example
+    dns: [172.30.0.53]
+    depends_on: [dns]
     environment:
+      # this repo's own image (image/, IMAGE=iredmail-phase-a:dev)
+      MAIL_DOMAIN: a.example
+      HOSTNAME_FQDN: mail.a.example
+      POSTMASTER_PASSWORD: ${ADMIN_A_PASSWORD:-TestPassw0rd1!}
+      CLAMAV: "0"
+      # official iredmail/mariadb:stable image
       HOSTNAME: mail.a.example
       FIRST_MAIL_DOMAIN: a.example
       FIRST_MAIL_DOMAIN_ADMIN_PASSWORD: ${ADMIN_A_PASSWORD:-TestPassw0rd1!}
       ROUNDCUBE_DES_KEY: ${A_DES_KEY:-0123456789abcdef0123456789ab}
       MLMMJADMIN_API_TOKEN: ${A_TOKEN:-a-test-token-0123456789abcdef}
       USE_FAIL2BAN: "NO"
+    # This repo's own image refuses to start on an unmounted /data/* (row
+    # 13 / #84 - image/scripts/common.sh's require_mountpoints). Named
+    # volumes, not anonymous ones from the image's own VOLUME directive:
+    # row 13/14 need state to survive a `down` (no -v) + `up`, which named
+    # volumes guarantee and anonymous ones don't reliably. Harmless for the
+    # official image, which doesn't check for or need this.
+    volumes:
+      - a-mysql:/data/mysql
+      - a-vmail:/data/vmail
+      - a-certs:/data/certs
+      - a-overrides:/data/overrides
+      - a-secrets:/data/secrets
     ports:
       - "12525:25"
       - "12465:465"
@@ -51,23 +106,29 @@ services:
     networks:
       default:
         ipv4_address: 172.30.0.10
-        aliases:
-          - a.example
-          - mail.a.example
-    extra_hosts:
-      - "b.example:172.30.0.11"
-      - "mail.b.example:172.30.0.11"
 
-  b:
+  mail-b:
     <<: *common
     hostname: mail.b.example
+    dns: [172.30.0.53]
+    depends_on: [dns]
     environment:
+      MAIL_DOMAIN: b.example
+      HOSTNAME_FQDN: mail.b.example
+      POSTMASTER_PASSWORD: ${ADMIN_B_PASSWORD:-TestPassw0rd1!}
+      CLAMAV: "0"
       HOSTNAME: mail.b.example
       FIRST_MAIL_DOMAIN: b.example
       FIRST_MAIL_DOMAIN_ADMIN_PASSWORD: ${ADMIN_B_PASSWORD:-TestPassw0rd1!}
       ROUNDCUBE_DES_KEY: ${B_DES_KEY:-fedcba9876543210fedcba987654}
       MLMMJADMIN_API_TOKEN: ${B_TOKEN:-b-test-token-0123456789abcdef}
       USE_FAIL2BAN: "NO"
+    volumes:
+      - b-mysql:/data/mysql
+      - b-vmail:/data/vmail
+      - b-certs:/data/certs
+      - b-overrides:/data/overrides
+      - b-secrets:/data/secrets
     ports:
       - "22525:25"
       - "22465:465"
@@ -77,12 +138,6 @@ services:
     networks:
       default:
         ipv4_address: 172.30.0.11
-        aliases:
-          - b.example
-          - mail.b.example
-    extra_hosts:
-      - "a.example:172.30.0.10"
-      - "mail.a.example:172.30.0.10"
 
 networks:
   default:
@@ -90,3 +145,15 @@ networks:
     ipam:
       config:
         - subnet: 172.30.0.0/24
+
+volumes:
+  a-mysql: {}
+  a-vmail: {}
+  a-certs: {}
+  a-overrides: {}
+  a-secrets: {}
+  b-mysql: {}
+  b-vmail: {}
+  b-certs: {}
+  b-overrides: {}
+  b-secrets: {}

@@ -19,7 +19,7 @@
 #                                              DNS record (as amavisd prints it)
 #   admin domain rm <domain>
 #   admin domain list                      -> one domain per line
-#   admin dkim show <domain>               -> the DKIM DNS record only
+#   admin dkim <domain>                    -> the DKIM DNS TXT record only
 #   admin user add <email> --password P --quota <size>[G|M]
 #   admin user rm <email>
 #   admin user quota <email> <size>[G|M]
@@ -100,7 +100,17 @@ cmd_domain_rm() {
 
 cmd_domain_list() { sql "SELECT domain FROM domain;"; }
 
-cmd_dkim_show() { /usr/sbin/amavisd-new showkeys "$1" 2>/dev/null; }
+# Normalized to the same one-line "dkim._domainkey.<domain>.  IN TXT
+# "<value>"" form the native CLI (image/scripts/admin) prints - amavisd-new
+# showkeys wraps long keys across multiple quoted/parenthesized lines; the
+# suite (test/conftest.py's DNS sidecar fixture, row17's key comparison)
+# only ever needs the one TXT value, not amavisd's own formatting.
+cmd_dkim() {
+    local domain="$1" raw value
+    raw="$(/usr/sbin/amavisd-new showkeys "$domain" 2>/dev/null)"
+    value="$(printf '%s' "$raw" | grep -o '"[^"]*"' | tr -d '"\n')"
+    echo "dkim._domainkey.${domain}.  IN TXT \"${value}\""
+}
 
 cmd_user_add() {
     local mail="$1"; shift
@@ -168,16 +178,33 @@ cmd_restore() {
     supervisorctl restart dovecot postfix >/dev/null 2>&1 || true
 }
 
-group="${1:-}"; action="${2:-}"; shift 2 || true
-case "${group} ${action}" in
-    "domain add")   cmd_domain_add "$@" ;;
-    "domain rm")    cmd_domain_rm "$@" ;;
-    "domain list")  cmd_domain_list ;;
-    "dkim show")    cmd_dkim_show "$@" ;;
-    "user add")     cmd_user_add "$@" ;;
-    "user rm")      cmd_user_rm "$@" ;;
-    "user quota")   cmd_user_quota "$@" ;;
-    "backup ")      cmd_backup ;;
-    "restore ")     cmd_restore ;;
-    *) echo "usage: admin domain add|rm|list ; admin user add|rm|quota ; admin dkim show ; admin backup ; admin restore" >&2; exit 2 ;;
+# Same shape as the native CLI's dispatcher (image/scripts/admin): a group
+# word, then either a subcommand or - for dkim/backup/restore, which are not
+# grouped - the command's own argument(s) directly.
+usage() {
+    echo "usage: admin domain add|rm|list ; admin user add|rm|quota ; admin dkim <domain> ; admin backup ; admin restore" >&2
+}
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+    domain)
+        sub="${1:-}"; shift || true
+        case "$sub" in
+            add) cmd_domain_add "$@" ;;
+            rm) cmd_domain_rm "$@" ;;
+            list) cmd_domain_list ;;
+            *) usage; exit 2 ;;
+        esac ;;
+    user)
+        sub="${1:-}"; shift || true
+        case "$sub" in
+            add) cmd_user_add "$@" ;;
+            rm) cmd_user_rm "$@" ;;
+            quota) cmd_user_quota "$@" ;;
+            *) usage; exit 2 ;;
+        esac ;;
+    dkim) cmd_dkim "${1:-}" ;;
+    backup) cmd_backup ;;
+    restore) cmd_restore ;;
+    *) usage; exit 2 ;;
 esac

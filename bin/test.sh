@@ -5,27 +5,36 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="${IMAGE:-iredmail/mariadb:stable}"
 COMPOSE_FILE="${HERE}/test/compose.yaml"
+COMPOSE_ARGS=(-f "${COMPOSE_FILE}")
+# The admin-shim overlay is only correct for the official image - see
+# test/compose.official-shim.yaml and test/README.md "The admin contract".
+if [ "${IMAGE}" = "iredmail/mariadb:stable" ]; then
+    COMPOSE_ARGS+=(-f "${HERE}/test/compose.official-shim.yaml")
+fi
 RESULTS_DIR="${HERE}/test-results"
 mkdir -p "${RESULTS_DIR}"
 
 cleanup() {
-    docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans
+    docker compose "${COMPOSE_ARGS[@]}" down -v --remove-orphans
 }
 trap cleanup EXIT
 
-echo "==> docker compose up (image: ${IMAGE:-iredmail/mariadb:stable})"
-docker compose -f "${COMPOSE_FILE}" up -d --build
+echo "==> docker compose up (image: ${IMAGE})"
+docker compose "${COMPOSE_ARGS[@]}" up -d --build
 up_status=$?
 if [ "${up_status}" -ne 0 ]; then
     echo "compose up failed (exit ${up_status})"
     exit "${up_status}"
 fi
 
-echo "==> waiting for both services to report healthy (up to 15 min for cold amd64-under-emulation pulls/first boot)"
+echo "==> waiting for both mail servers to report healthy (up to 15 min for cold amd64-under-emulation pulls/first boot)"
 deadline=$((SECONDS + 900))
 while [ "${SECONDS}" -lt "${deadline}" ]; do
-    statuses="$(docker compose -f "${COMPOSE_FILE}" ps --format '{{.Service}} {{.Health}}')"
+    # only mail-a/mail-b have a healthcheck - the dns sidecar doesn't, and
+    # would otherwise show an empty Health forever.
+    statuses="$(docker compose "${COMPOSE_ARGS[@]}" ps --format '{{.Service}} {{.Health}}' | grep '^mail-')"
     if echo "${statuses}" | awk '{print $2}' | grep -qv '^healthy$'; then
         sleep 5
         continue

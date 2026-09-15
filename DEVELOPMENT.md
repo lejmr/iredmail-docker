@@ -4,17 +4,55 @@ Being written during the 2026 refresh; sections are filled as the pieces land.
 
 ## Run it
 
-    docker compose -f test/compose.yaml up -d --build   # servers A and B
-    bin/test.sh                                         # the acceptance suite
+Against the official iRedMail image (`test/compose.yaml`'s default,
+`iredmail/mariadb:stable`):
+
+    bin/test.sh
+
+Against this repo's own image (phase A, `image/`) - build it once, then
+point the suite at the tag (`bin/test.sh` never builds it):
+
+    docker buildx build --platform linux/amd64 -t iredmail-phase-a:dev -f image/Dockerfile image
+    IMAGE=iredmail-phase-a:dev bin/test.sh
+
+Either way: `bin/test.sh` brings up A, B and a DNS sidecar from
+`test/compose.yaml` (`docker compose up -d`, no rebuild unless the target
+`IMAGE` has a `build:` entry - this repo's own tag doesn't, by design, see
+below), waits for A/B to report `healthy`, runs the acceptance suite, and
+tears everything down (`compose down -v`) even on failure. To run the two
+servers only (no suite), see `test/README.md`.
 
 ## Tests
 
 `test/` holds the acceptance suite: one test per row of `ACCEPTANCE.md`,
-named after the row, written against public interfaces only (see
-`CLAUDE.md`). `pytest` with plain `smtplib`/`imaplib`/`requests`; `swaks`
-and `openssl s_client` where a raw conversation is clearer. The suite takes
-`MAIL_A`/`MAIL_B` host:port settings so it can run against any two servers -
-this image, the official `iredmail/mariadb` image, or the phase-B stack.
+named after the row (`test/test_acceptance.py`), written against public
+interfaces only (see `CLAUDE.md`) - SMTP/IMAP/HTTPS/ActiveSync/CalDAV
+sockets and the `admin` CLI run inside the container (`docker compose exec
+mail-a admin ...`, the suite's only `exec`). `pytest` with plain
+`smtplib`/`imaplib`/`requests`; `openssl s_client` where a raw TLS
+handshake is clearer. The same 27 tests run against either image - see
+`test/README.md` for the `IMAGE`/`MAIL_A_HOST`/etc. variables that select
+which pair of servers, and "DNS sidecar" for how row 6's DKIM check and
+A -> B routing go through a real DNS lookup rather than a shortcut.
+
+### This host
+
+An arm64 Mac running Colima (`vmType: vz`, Rosetta for amd64 emulation,
+not QEMU - see "Build" below), 6 CPUs / 12 GiB / 100 GiB disk allocated to
+the VM. Runtime numbers measured here, for calibration:
+
+- `image/Dockerfile` build (`--platform linux/amd64`, cold): ~8 minutes
+  under Rosetta - most of it iRedMail's own unattended installer. Not
+  needed for every test run; build once, reuse the tag (`IMAGE=
+  iredmail-phase-a:dev`).
+- `bin/test.sh` against the built image, warm (image already pulled/built,
+  no cold-boot penalty beyond first-start.sh's own DKIM keygen etc.): the
+  27-test suite completes in under 10 minutes end to end (compose up,
+  health wait, pytest, teardown).
+- Image size: `iredmail-phase-a:dev` is currently ~1.9 GB (`docker image
+  inspect -f '{{.Size}}'`) - well over the 800 MB phase-A ceiling in
+  `ACCEPTANCE.md` row 15; recorded, not worked on further in this repo's
+  final refresh (see `CLAUDE.md`).
 
 ## image/ (phase A)
 
@@ -35,20 +73,24 @@ never collides with anything else on the machine):
 
 ### Build: a known local limitation, not an image bug
 
-On an arm64 Mac under Colima/QEMU (`--platform linux/amd64` emulation), the
-build reaches the unattended `bash iRedMail.sh` step and fails partway
-through apt's dependency install: every `python3-*` package's postinst
-byte-compiles with `py3compile`, which shells out to `python3.13 -c
-'import sys; print(sys.implementation.cache_tag)'` - and that subprocess
-**segfaults** (exit status -11) under this host's QEMU user-mode
-emulation. This is a QEMU/Python 3.13 interaction on the build host, not a
-bug in `image/Dockerfile` or the installer variables (everything up to
-that apt run - config generation, the temporary MariaDB bootstrap -
-completed correctly both times it was tried).
+Earlier on this same kind of host (arm64 Mac, Colima running amd64 under
+**QEMU** user-mode emulation), the build reached the unattended `bash
+iRedMail.sh` step and failed partway through apt's dependency install:
+every `python3-*` package's postinst byte-compiles with `py3compile`,
+which shells out to `python3.13 -c 'import sys;
+print(sys.implementation.cache_tag)'` - and that subprocess **segfaulted**
+(exit status -11) under QEMU. That was a QEMU/Python 3.13 interaction on
+the build host, not a bug in `image/Dockerfile` or the installer variables
+(everything up to that apt run - config generation, the temporary MariaDB
+bootstrap - completed correctly both times it was tried).
 
-Until Colima can run amd64 via Rosetta instead of QEMU (or the image is
-built on real amd64 hardware), treat local `--platform linux/amd64`
-builds on Apple Silicon as unreliable and build in CI instead:
+**Resolved on this host** by switching Colima to Rosetta instead of QEMU
+(`vmType: vz`, Rosetta enabled for amd64 emulation) - the same build then
+completes in full, in ~8 minutes (see "This host" above). If a local build
+still segfaults the way described, the host is very likely still on QEMU;
+switch it (`colima start --vm-type vz --vz-rosetta`, or the equivalent in
+`~/.colima/default/colima.yaml`) before assuming an image bug. Failing
+that, or on non-Apple-Silicon hosts without Rosetta, build in CI instead:
 `.github/workflows/build.yml` runs on GitHub's amd64 runners, builds the
 image, reports its size, runs the acceptance suite against a fresh
 `compose up` when `bin/test.sh` exists, and pushes to GHCR on `master`.

@@ -1,0 +1,18 @@
+# DNS sidecar (test/compose.yaml's `dns` service, CoreDNS, pinned
+# coredns/coredns:1.11.3) - authoritative for a.example/b.example so row 6's
+# A -> B delivery and DKIM check go through a real MX/TXT lookup. See
+# test/README.md "DNS sidecar" for the full mechanism.
+#
+# `reload` is declared but not relied on: it only watches db.example's own
+# mtime, not the $INCLUDE'd generated/dkim.zone (verified empirically -
+# rewriting just the included file did not pick up within several reload
+# intervals). The dns_sidecar fixture in conftest.py restarts this
+# container after writing generated/dkim.zone instead - reliable, and fast
+# (CoreDNS has no state to rebuild).
+example. {
+    file /etc/coredns/db.example {
+        reload 2s
+    }
+    log
+    errors
+}
