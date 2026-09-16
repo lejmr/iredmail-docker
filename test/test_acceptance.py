@@ -89,6 +89,20 @@ def smtp_send(server, mail_from, rcpt_to, subject, body="body", helo=None,
             if attempt == _retries - 1:
                 raise
             time.sleep(2)
+        except smtplib.SMTPRecipientsRefused as exc:
+            # A 4xx is the server saying "not now, ask again" - by
+            # definition retryable, and a real mail server would. Seen on
+            # the CI runner as `451 4.3.5 Recipient address rejected:
+            # Server configuration problem`: Postfix could not complete the
+            # MySQL lookup for virtual_mailbox_maps while MariaDB was busy
+            # restoring/restarting in the same job. A 5xx is a decision and
+            # is re-raised untouched, so row 8's relay denial and row 5's
+            # over-quota rejection still assert on it.
+            codes = {code for code, _ in exc.recipients.values()}
+            if not codes or min(codes) >= 500 or attempt == _retries - 1:
+                raise
+            last_exc = exc
+            time.sleep(3)
     raise last_exc  # pragma: no cover - loop always returns or raises above
 
 
