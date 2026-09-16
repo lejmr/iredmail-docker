@@ -16,7 +16,6 @@ services:
       HOSTNAME_FQDN: mail.a.example
       POSTMASTER_PASSWORD: a-postmaster-pw
       PEER_DOMAINS: "b.example=mail-b"
-      CLAMAV: "0"
     volumes:
       - a-mysql:/data/mysql
       - a-vmail:/data/vmail
@@ -42,7 +41,6 @@ services:
       HOSTNAME_FQDN: mail.b.example
       POSTMASTER_PASSWORD: b-postmaster-pw
       PEER_DOMAINS: "a.example=mail-a"
-      CLAMAV: "0"
     volumes:
       - b-mysql:/data/mysql
       - b-vmail:/data/vmail

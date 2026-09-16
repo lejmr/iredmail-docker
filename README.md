@@ -10,9 +10,11 @@
 > will not get new features.
 
 An all-in-one [iRedMail](https://www.iredmail.org) mail server - Postfix,
-Dovecot, MariaDB, Amavis + SpamAssassin (ClamAV optional), iRedAPD,
+Dovecot, MariaDB, Amavis + SpamAssassin + ClamAV (on by default), iRedAPD,
 iRedAdmin, SOGo (ActiveSync, CalDAV/CardDAV), nginx - in one image on
-`debian:13-slim`, supervised by supervisord, without `--privileged`.
+`debian:13-slim`, supervised by supervisord, without `--privileged`. Spam is
+tagged and filed to the Junk folder, never silently discarded; a virus is
+rejected outright (a live SMTP 5xx to the sender), never silently dropped.
 
 ## Run it
 
@@ -25,7 +27,7 @@ services:
       MAIL_DOMAIN: example.org
       POSTMASTER_PASSWORD: change-me            # or POSTMASTER_PASSWORD_FILE=/run/secrets/…
       TZ: Europe/Prague
-      CLAMAV: "0"                               # "1" runs ClamAV (about 1 GB more RAM)
+      CLAMAV: "1"                               # default; "0" turns it off (saves about 1 GB RAM)
     ports: ["25:25", "465:465", "587:587", "993:993", "443:443", "80:80"]
     volumes:
       - mysql:/data/mysql
