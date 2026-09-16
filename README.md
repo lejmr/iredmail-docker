@@ -116,14 +116,14 @@ twice.
 
 ## What is tested
 
-[`ACCEPTANCE.md`](ACCEPTANCE.md) lists twenty things a person running a
+[`ACCEPTANCE.md`](ACCEPTANCE.md) lists twenty-one things a person running a
 mail server expects, in their words, observable only from outside the
 container. `test/` proves them against two servers started from nothing
 that exchange mail through a private DNS with real MX and DKIM records. CI
 runs the suite on every pull request and rebuilds the image weekly, so a
 base-image security update or a broken upstream repository shows up before
-a user reports it. Every release's notes record which rows pass and which
-do not.
+a user reports it. A release is only published when every row passes; the
+release notes carry the per-row table.
 
 ## Security
 

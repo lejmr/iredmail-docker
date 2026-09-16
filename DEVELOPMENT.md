@@ -12,7 +12,7 @@ maintainer's `drive-change` skill; `CLAUDE.md` maps it onto this repository.
 | `test/` | the acceptance suite (`pytest`), `compose.yaml` for the suite (`mail-a`/`mail-b` + a CoreDNS sidecar, and `mail-c` - `profiles: [restore]`, row 14's backup-restore target, started only when that row needs it), `dns/` zone files, `admin-shims/` for running the suite against other images |
 | `bin/test.sh` | fresh `compose up` → wait healthy → suite → `down -v`; exit code is pytest's |
 | `bin/merge-stages.sh` | lands a validated integration branch as topical squash PRs whose combined tree is byte-identical to what was validated |
-| `ACCEPTANCE.md` | the specification: twenty rows in the words of someone running the server; the required subset for this repository is listed at the bottom |
+| `ACCEPTANCE.md` | the specification: twenty-one rows in the words of someone running the server; every row is required, a skip is a failure |
 
 ## Build
 
@@ -123,7 +123,7 @@ still segfaults the way described, the host is very likely still on QEMU;
 switch it (`colima start --vm-type vz --vz-rosetta`, or the equivalent in
 `~/.colima/default/colima.yaml`) before assuming an image bug. Failing
 that, or on non-Apple-Silicon hosts without Rosetta, build in CI instead:
-`.github/workflows/build.yml` runs on GitHub's amd64 runners, builds the
+`.github/workflows/ci.yml` runs on GitHub's amd64 runners, builds the
 image, reports its size, runs the acceptance suite against a fresh
 `compose up` when `bin/test.sh` exists, and pushes to GHCR on `master`.
 
