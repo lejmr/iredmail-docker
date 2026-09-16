@@ -36,6 +36,17 @@ RUN set -eux; \
     printf '#!/bin/sh\n# ponytail: build-time no-op, real service control is supervisord at runtime\ncase "$1" in\n  is-active) exit 1 ;;\n  is-enabled) exit 1 ;;\n  *) exit 0 ;;\nesac\n' > /usr/bin/systemctl; \
     chmod +x /usr/bin/systemctl
 
+# Row 15: zero upgradable packages at build time. `debian:13-slim`'s own
+# layer can be a few days older than the mirror snapshot this build reaches
+# - packages it already has installed (not ones this Dockerfile adds later)
+# only get security fixes if something explicitly upgrades them. Confirmed
+# by Trivy on an image built without this: two HIGH CVEs with a fix already
+# published (gzip CVE-2026-41992, libsqlite3-0 CVE-2026-11822/-11824) on
+# packages nothing here ever re-installs.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get upgrade -y
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     set -eux; \
@@ -138,6 +149,21 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     mkdir -p /data/overrides/postfix/main.cf.d /data/overrides/dovecot; \
     echo '!include_try /data/overrides/dovecot/*.conf' >> /etc/dovecot/dovecot.conf; \
     rm -f /etc/ssl/private/iRedMail.key /etc/ssl/certs/iRedMail.crt; \
+    # Row 15 (Trivy secret scan): the `ssl-cert` package's default
+    # "snakeoil" private key is generated once, at BUILD time, by a
+    # postinst somewhere in this same RUN's package installs - so it is
+    # the exact same key baked into every image built from this
+    # Dockerfile. Deleting it in a LATER, separate RUN/layer is not
+    # enough - Trivy scans each layer's own contents, and a later layer's
+    # deletion is just a whiteout marker on top of a lower layer that
+    # still contains the file (confirmed: deleting it two layers down
+    # still flagged HIGH/AsymmetricPrivateKey, "added by" this exact RUN).
+    # Deleting it in the SAME layer it is created in means it is never
+    # written into any layer's tar at all. Nothing in this image uses it:
+    # postfix/dovecot/nginx are all pointed at /data/certs/{cert,key}.pem
+    # (first-start.sh generates a real, per-container self-signed cert
+    # there, or a mounted real one wins).
+    rm -f /etc/ssl/private/ssl-cert-snakeoil.key /etc/ssl/certs/ssl-cert-snakeoil.pem; \
     rm -f /var/lib/dkim/*.pem /var/lib/dkim/*.private 2>/dev/null || true; \
     mv /usr/bin/systemctl.real /usr/bin/systemctl 2>/dev/null || true; \
     rm -f /usr/sbin/policy-rc.d
@@ -231,6 +257,88 @@ RUN sed -i \
     -e "/^dkim_key('build.invalid'/d" \
     -e '/^@dkim_signature_options_bysender_maps = ({$/,/^});$/d' \
     /etc/amavis/conf.d/50-user
+
+# --- Row 9: spam is tagged and delivered (never silently discarded), --
+# --- viruses are rejected with a 5xx, not silently dropped ------------
+# iRedMail's own conf.d/50-user sets both final_spam_destiny and
+# final_virus_destiny to D_DISCARD - confirmed on a running container:
+# GTUBE from B got amavis's own "Blocked SPAM {DiscardedInbound,
+# Quarantined}" verdict and never reached A at all, and EICAR got the same
+# treatment instead of an SMTP-level reject. Per ACCEPTANCE.md row 9:
+#   - spam must be tagged (X-Spam-Flag: YES, already added by amavis once
+#     the score is >= $sa_tag2_level_deflt) and delivered - D_PASS - so
+#     Dovecot's global "before" sieve script (below) can file it into Junk
+#     instead of amavis discarding it before delivery ever happens.
+#   - a virus must bounce the SENDING CLIENT's own SMTP session with a
+#     5xx - D_REJECT, not D_DISCARD (no signal to the sender at all).
+RUN sed -i \
+    -e "s/^\$final_spam_destiny = D_DISCARD;/\$final_spam_destiny = D_PASS;/" \
+    -e "s/^\$final_virus_destiny = D_DISCARD;/\$final_virus_destiny = D_REJECT;/" \
+    /etc/amavis/conf.d/50-user; \
+    grep -q '^\$final_spam_destiny = D_PASS;' /etc/amavis/conf.d/50-user; \
+    grep -q '^\$final_virus_destiny = D_REJECT;' /etc/amavis/conf.d/50-user
+
+# D_REJECT alone is not enough: iRedMail wires Amavis as an AFTER-QUEUE
+# content filter (`content_filter = smtp-amavis:[...]:10026` on submission/
+# smtps in master.cf) - Postfix already answers the client's DATA command
+# with 250 and queues the mail BEFORE Amavis ever sees it; a later reject
+# at re-injection (127.0.0.1:10025) just bounces a DSN into the sender's
+# own mailbox, not a live 5xx on the connection the acceptance test is
+# still holding open. Confirmed empirically: with only the destiny change
+# above, `mail.log` showed "Blocked INFECTED ... {RejectedInternal,
+# Quarantined}" but the sending smtplib session never raised - it had
+# already gotten its 250 for END-OF-MESSAGE.
+#
+# Amavis's own supported fix is SMTP-based BEFORE-queue filtering
+# (amavisd-new's README.postfix): point submission/smtps at
+# `smtpd_proxy_filter` instead of `content_filter` - Postfix's smtpd then
+# streams the message to Amavis SYNCHRONOUSLY, in the same client session,
+# and Amavis's response (250 or a live 5xx) becomes smtpd's own DATA/
+# END-OF-MESSAGE response. Same port (10026, so the same 'ORIGINATING'
+# $policy_bank - amavis/conf.d/50-user - still applies) and the same
+# re-injection target (10025, already wired for the after-queue path) -
+# nothing else about the pipeline changes. Scoped to submission/smtps
+# only: inbound port 25 (content_filter -> 10024, main.cf's global
+# default) is untouched and stays after-queue, which is the safer choice
+# for anonymous inbound mail anyway (D_REJECT there would bounce to a
+# forged sender - amavis's own docs warn against exactly that).
+# Three master.cf entries carry this exact line, not the two the acceptance
+# row exercises - `pickup` (locally injected mail, e.g. cron) as well as
+# submission/smtps - switching it too is harmless (still port 10026, same
+# 'ORIGINATING' policy bank) and keeps the file's remaining content_filter
+# lines to only the ones that are genuinely still after-queue (smtp/25
+# via main.cf's global default, and the ones already blank on the 10025/
+# 10027 reinjection listeners).
+RUN sed -i \
+    -e 's|^    -o content_filter=smtp-amavis:\[127\.0\.0\.1\]:10026$|    -o smtpd_proxy_filter=[127.0.0.1]:10026\n    -o smtpd_proxy_options=speed_adjust|' \
+    /etc/postfix/master.cf; \
+    [ "$(grep -c '^    -o smtpd_proxy_filter=\[127.0.0.1\]:10026$' /etc/postfix/master.cf)" = 3 ]
+
+# Ship iRedMail's global "before" sieve script (files X-Spam-Flag: YES mail
+# into Junk) OUTSIDE the /data/vmail volume, baked into the image itself.
+# iRedMail's installer writes it to /var/vmail/sieve/dovecot.sieve, but
+# this image replaces /var/vmail with a symlink to the /data/vmail volume
+# (see above) - a fresh volume's first boot only restores the vmail1
+# message store, never this global script, so a running container never
+# actually had the Junk-filing rule (confirmed: /data/vmail/sieve did not
+# exist on a running container). Keeping it in the image instead of the
+# volume means it survives `docker compose down`/`up` (no volume needed)
+# *and* every upgrade (each new image ships its own copy, no migration
+# step required) - the two properties ACCEPTANCE.md row 13/18 require of
+# anything that must outlive a container.
+COPY scripts/sieve/dovecot.sieve /usr/local/lib/iredmail/sieve/dovecot.sieve
+RUN chmod -R a+rX /usr/local/lib/iredmail/sieve && \
+    sed -i "s#path = /var/vmail/sieve/dovecot.sieve#path = /usr/local/lib/iredmail/sieve/dovecot.sieve#" /etc/dovecot/dovecot.conf && \
+    grep -q '/usr/local/lib/iredmail/sieve/dovecot.sieve' /etc/dovecot/dovecot.conf && \
+    doveconf -n >/dev/null
+
+# ClamAV memory: reloading the database (freshclam picks up an update,
+# or clamd's own periodic SelfCheck) briefly doubles resident memory while
+# the old and new signature sets are both loaded - noticeable running two
+# servers side by side in CI/on a small host. ConcurrentDatabaseReload=no
+# trades a short pause in scanning during a reload for not doubling that
+# memory.
+RUN echo 'ConcurrentDatabaseReload no' >> /etc/clamav/clamd.conf
 
 # --- Runtime dependencies (supervisord, no fail2ban / netdata) ---------
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -334,7 +442,12 @@ RUN chmod +x /usr/local/bin/admin /usr/local/bin/healthcheck.sh /entrypoint.sh \
 # 25 smtp, 465 smtps, 587 submission, 993 imaps, 443 https, 80 acme
 EXPOSE 25 465 587 993 443 80
 
-ENV CLAMAV=0
+# ClamAV on by default (restores the old lejmr/iredmail image's behaviour -
+# see CHANGELOG.md [1.8.8]); CLAMAV=0 is an explicit opt-out for hosts
+# tight on RAM. iRedMail's installer cannot skip installing ClamAV either
+# way, so the packages are always present; entrypoint.sh only starts/stops
+# its two supervisord programs and Amavis's ClamAV::Daemon scanner line.
+ENV CLAMAV=1
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=12 \
     CMD ["/usr/local/bin/healthcheck.sh"]

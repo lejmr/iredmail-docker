@@ -14,4 +14,13 @@ check 3306 || exit 1   # mariadb
 check 443  || exit 1   # nginx
 check 20000 || exit 1  # sogo (proxied by nginx, but checked directly too)
 
+# Row 9 (virus): when ClamAV is on, the container isn't healthy until
+# clamd has finished loading its signature database - clamd doesn't bind
+# its control socket until that load completes, so this doubles as "the
+# database is loaded", not just "the process is running" (freshclam's
+# first download can take a while right after first start).
+if [ "${CLAMAV:-1}" != "0" ]; then
+    clamdscan --ping 1 >/dev/null 2>&1 || exit 1
+fi
+
 exit 0

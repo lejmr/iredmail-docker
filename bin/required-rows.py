@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Turn test-results/junit.xml into a per-row table and fail only when a
-row that ACCEPTANCE.md marks as required for this repository did not pass.
-Used by ci.yml and release.yml; the table goes into the job summary and the
-release notes. Rows not required are recorded as they are."""
+"""Turn test-results/junit.xml into a per-row table and fail when any row did
+not PASS (a SKIP counts as a failure: a test that could not run proves
+nothing). Used by ci.yml and release.yml; the table goes into the job
+summary and the release notes."""
 import collections, re, sys, xml.etree.ElementTree as ET
 
-REQUIRED = {1, 2, 4, 6, 7, 8, 10, 13, 16, 17, 21}
+REQUIRED = set(range(1, 22))  # every row; a SKIP is a failure too
 path = sys.argv[1] if len(sys.argv) > 1 else "test-results/junit.xml"
 rows = collections.OrderedDict()
 for c in ET.parse(path).getroot().iter("testcase"):
@@ -22,5 +22,7 @@ for r in sorted(rows):
     print(f"| {r} | {st}{' (required)' if r in REQUIRED else ''} |")
     if r in REQUIRED and st != "PASS":
         bad.append(r)
+    if not rows:
+        bad.append("no rows found")
 if bad:
     sys.exit(f"required rows not passing: {bad}")

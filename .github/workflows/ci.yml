@@ -34,7 +34,8 @@ jobs:
       - name: shellcheck
         run: |
           sudo apt-get -qq install -y shellcheck >/dev/null
-          shellcheck -S warning image/scripts/* image/build/*.sh bin/*.sh
+          # files only - image/scripts/sieve is a directory
+          find image/scripts image/build bin -maxdepth 1 -type f ! -name '*.py' -print0 | xargs -0 shellcheck -S warning
       - name: hadolint
         uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
         with:
@@ -67,14 +68,21 @@ jobs:
           size=$(docker image inspect --format '{{.Size}}' iredmail-phase-a:dev)
           echo "image size: $((size / 1024 / 1024)) MB" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: vulnerabilities with a fix available (row 15)
+        # `trivy-cache` (named volume): row 15's own pytest test re-runs
+        # Trivy for real (gating, --exit-code 1) a few steps down - sharing
+        # the DB cache means that second run doesn't re-download the ~1 GB
+        # vuln+Java DB from scratch.
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/ \
             aquasec/trivy:0.58.2 image --ignore-unfixed --severity HIGH,CRITICAL \
-            --exit-code 0 --format table iredmail-phase-a:dev | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: suite prerequisites (row 16 scans ports with nmap)
-        run: sudo apt-get -qq install -y nmap >/dev/null
+            --exit-code 0 --timeout 15m --format table iredmail-phase-a:dev | tee -a "$GITHUB_STEP_SUMMARY"
       - name: acceptance suite from a fresh compose up
-        run: IMAGE=iredmail-phase-a:dev bin/test.sh || true
+        # row 16's port scan (nmap) and row 15's CVE scan (trivy) both run
+        # from their own containers now (test_acceptance.py) - nothing to
+        # install on the runner host for either any more. IMAGE_NEXT set
+        # explicitly (not left to bin/test.sh's own default) so row 13/18's
+        # upgrade half is never silently skipped here.
+        run: IMAGE=iredmail-phase-a:dev IMAGE_NEXT=iredmail-phase-a:dev bin/test.sh || true
       - name: required rows must pass; every row is recorded
         # pipefail: without it `| tee` hid a non-zero exit from the gate
         run: |

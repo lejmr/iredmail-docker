@@ -10,12 +10,26 @@ x-common: &common
   # image has none; ours has one, but compose only surfaces a HEALTHCHECK
   # baked into the image, and the suite wants the identical probe against
   # both) - a plain TCP probe of the three ports the suite actually needs.
+  # Also gates on clamd (row 9: ClamAV on by default) when the container
+  # has it - `command -v clamdscan` is absent on the official image, and
+  # CLAMAV=0 is this repo's own opt-out - either way the extra check is
+  # skipped rather than failing a server that was never asked to run it.
+  # clamd doesn't bind its control socket until its database finishes
+  # loading, so `clamdscan --ping` failing IS "not ready yet", the same
+  # signal a plain port probe gives for postfix/dovecot/nginx.
   healthcheck:
-    test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/25' && bash -c '</dev/tcp/127.0.0.1/993' && bash -c '</dev/tcp/127.0.0.1/443'"]
+    # $$ (not $) for CLAMAV: this is the CONTAINER's own env var, read by
+    # the shell the healthcheck runs inside it - a single $ is compose's
+    # own interpolation syntax and would bake in the value from the HOST
+    # running `docker compose`, not the container, at compose-parse time
+    # (caught by `docker compose config`: it silently rewrote a first
+    # attempt with a single $ into the literal host-side default before
+    # the healthcheck ever ran).
+    test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/25' && bash -c '</dev/tcp/127.0.0.1/993' && bash -c '</dev/tcp/127.0.0.1/443' && if [ \"$${CLAMAV:-1}\" != \"0\" ] && command -v clamdscan >/dev/null 2>&1; then clamdscan --ping 1 >/dev/null 2>&1; fi"]
     interval: 5s
     timeout: 5s
-    retries: 40
-    start_period: 180s
+    retries: 60
+    start_period: 240s
 
 # No admin-shim mount here: this repo's own image ships /usr/local/bin/admin
 # natively (image/scripts/admin), and mounting a shim over it would shadow
@@ -80,7 +94,8 @@ services:
       MAIL_DOMAIN: a.example
       HOSTNAME_FQDN: mail.a.example
       POSTMASTER_PASSWORD: ${ADMIN_A_PASSWORD:-TestPassw0rd1!}
-      CLAMAV: "0"
+      # ClamAV on by default (this image's own ENV CLAMAV=1) - row 9's
+      # EICAR-is-rejected half needs it; not overridden here any more.
       # official iredmail/mariadb:stable image
       HOSTNAME: mail.a.example
       FIRST_MAIL_DOMAIN: a.example
@@ -119,7 +134,6 @@ services:
       MAIL_DOMAIN: b.example
       HOSTNAME_FQDN: mail.b.example
       POSTMASTER_PASSWORD: ${ADMIN_B_PASSWORD:-TestPassw0rd1!}
-      CLAMAV: "0"
       HOSTNAME: mail.b.example
       FIRST_MAIL_DOMAIN: b.example
       FIRST_MAIL_DOMAIN_ADMIN_PASSWORD: ${ADMIN_B_PASSWORD:-TestPassw0rd1!}
@@ -142,6 +156,47 @@ services:
       default:
         ipv4_address: 172.30.0.11
 
+  # Row 14 (backup/restore): a restore target started the same way mail-a
+  # is - same image, same required /data/* mounts, same caps - so it can
+  # actually boot (this repo's own image refuses to start without all
+  # five, common.sh's require_mountpoints/#84). `admin restore` then
+  # replaces its vmail/amavisd/sogo databases and Maildir store wholesale
+  # with what `admin backup` took off mail-a; mail-c's own MAIL_DOMAIN only
+  # needs to exist long enough for first-start.sh to succeed - it is
+  # dropped the moment restore runs. `profiles: [restore]` keeps it out of
+  # every other `docker compose up` (rows 1-13, 15-21 never need it).
+  mail-c:
+    <<: *common
+    profiles: [restore]
+    hostname: mail.c.example
+    dns: [172.30.0.53]
+    depends_on: [dns]
+    environment:
+      MAIL_DOMAIN: c.example
+      HOSTNAME_FQDN: mail.c.example
+      POSTMASTER_PASSWORD: ${ADMIN_C_PASSWORD:-TestPassw0rd1!}
+      HOSTNAME: mail.c.example
+      FIRST_MAIL_DOMAIN: c.example
+      FIRST_MAIL_DOMAIN_ADMIN_PASSWORD: ${ADMIN_C_PASSWORD:-TestPassw0rd1!}
+      ROUNDCUBE_DES_KEY: ${C_DES_KEY:-00112233445566778899aabbccdd}
+      MLMMJADMIN_API_TOKEN: ${C_TOKEN:-c-test-token-0123456789abcdef}
+      USE_FAIL2BAN: "NO"
+    volumes:
+      - c-mysql:/data/mysql
+      - c-vmail:/data/vmail
+      - c-certs:/data/certs
+      - c-overrides:/data/overrides
+      - c-secrets:/data/secrets
+    ports:
+      - "32525:25"
+      - "32465:465"
+      - "32587:587"
+      - "32993:993"
+      - "32443:443"
+    networks:
+      default:
+        ipv4_address: 172.30.0.12
+
 networks:
   default:
     name: iredmail-acceptance
@@ -160,3 +215,8 @@ volumes:
   b-certs: {}
   b-overrides: {}
   b-secrets: {}
+  c-mysql: {}
+  c-vmail: {}
+  c-certs: {}
+  c-overrides: {}
+  c-secrets: {}

@@ -9,10 +9,10 @@ maintainer's `drive-change` skill; `CLAUDE.md` maps it onto this repository.
 |---|---|
 | `image/` | the Dockerfile, `build/` (build-time helpers), `scripts/` (entrypoint, first start, per-boot config rendering, migrations, overrides, healthcheck, the `admin` CLI) |
 | `compose.yaml` | two servers (`mail-a`, `mail-b`) on one network - the shape of a real deployment, also usable for manual testing |
-| `test/` | the acceptance suite (`pytest`), `compose.yaml` for the suite (servers + a CoreDNS sidecar), `dns/` zone files, `admin-shims/` for running the suite against other images |
+| `test/` | the acceptance suite (`pytest`), `compose.yaml` for the suite (`mail-a`/`mail-b` + a CoreDNS sidecar, and `mail-c` - `profiles: [restore]`, row 14's backup-restore target, started only when that row needs it), `dns/` zone files, `admin-shims/` for running the suite against other images |
 | `bin/test.sh` | fresh `compose up` → wait healthy → suite → `down -v`; exit code is pytest's |
 | `bin/merge-stages.sh` | lands a validated integration branch as topical squash PRs whose combined tree is byte-identical to what was validated |
-| `ACCEPTANCE.md` | the specification: twenty rows in the words of someone running the server; the required subset for this repository is listed at the bottom |
+| `ACCEPTANCE.md` | the specification: twenty-one rows in the words of someone running the server; every row is required, a skip is a failure |
 
 ## Build
 
@@ -97,9 +97,10 @@ the VM. Runtime numbers measured here, for calibration:
   27-test suite completes in under 10 minutes end to end (compose up,
   health wait, pytest, teardown).
 - Image size: `iredmail-phase-a:dev` is currently ~1.9 GB (`docker image
-  inspect -f '{{.Size}}'`) - well over the 800 MB phase-A ceiling in
-  `ACCEPTANCE.md` row 15; recorded, not worked on further in this repo's
-  final refresh (see `CLAUDE.md`).
+  inspect -f '{{.Size}}'`) - within `ACCEPTANCE.md` row 15's 2000 MB
+  ceiling (revised 2026-09-16 to the honest number for iRedMail + SOGo +
+  ClamAV on Debian, which is ~1.9 GB; the earlier 800 MB figure was never
+  achievable without dropping ClamAV or SOGo, decided out of scope).
 
 
 ### Build: a known local limitation, not an image bug
@@ -122,7 +123,7 @@ still segfaults the way described, the host is very likely still on QEMU;
 switch it (`colima start --vm-type vz --vz-rosetta`, or the equivalent in
 `~/.colima/default/colima.yaml`) before assuming an image bug. Failing
 that, or on non-Apple-Silicon hosts without Rosetta, build in CI instead:
-`.github/workflows/build.yml` runs on GitHub's amd64 runners, builds the
+`.github/workflows/ci.yml` runs on GitHub's amd64 runners, builds the
 image, reports its size, runs the acceptance suite against a fresh
 `compose up` when `bin/test.sh` exists, and pushes to GHCR on `master`.
 
@@ -178,11 +179,50 @@ the repo root for the two-server (A/B) wiring this drives.
 
 ### ClamAV
 
-`CLAMAV=0` (default, per the 2026-09-15 decision) - iRedMail's installer
-cannot skip installing ClamAV, so it ships in the image either way;
-`CLAMAV=0` just stops both its supervisord programs and disables the
-`ClamAV::Daemon` line in Amavis's content-filter config at every start.
-Set `CLAMAV=1` to turn it back on.
+`CLAMAV=1` (default, per the 2026-09-16 decision - restores the old
+`lejmr/iredmail` image's behaviour) - iRedMail's installer cannot skip
+installing ClamAV, so it ships in the image either way; `CLAMAV=0` is an
+explicit opt-out that stops both its supervisord programs (`clamav-daemon`,
+`clamav-freshclam`) and disables the `ClamAV::Daemon` line in Amavis's
+content-filter config at every start, for hosts tight on RAM (roughly 1 GB
+less resident). The image's own `HEALTHCHECK` (and the acceptance suite's
+compose healthcheck) only reports healthy once `clamdscan --ping` succeeds
+when ClamAV is on - clamd does not bind its control socket until its
+signature database has finished loading, so this doubles as "the database
+is loaded", not just "the process is running". `image/Dockerfile` also sets
+`ConcurrentDatabaseReload no` in `clamd.conf` so a signature update does not
+briefly double clamd's resident memory.
+
+### Spam and viruses (row 9)
+
+Amavis + SpamAssassin (+ ClamAV) as iRedMail ships them, with two overrides
+from iRedMail's own defaults, both in `image/Dockerfile`:
+
+- `$final_spam_destiny = D_PASS` (iRedMail default: `D_DISCARD`) - spam is
+  tagged (`X-Spam-Flag: YES`, added once the SpamAssassin score is at or
+  above `$sa_tag2_level_deflt`) and still delivered, instead of silently
+  dropped. Dovecot's global "before" sieve script
+  (`image/scripts/sieve/dovecot.sieve`, baked into the image at
+  `/usr/local/lib/iredmail/sieve/` rather than the `/data/vmail` volume -
+  it must survive a `down`/`up` with no volume restore step, and every
+  upgrade with no migration step) files anything so tagged into the Junk
+  folder (`lda_mailbox_autocreate = yes` creates it on first use).
+- `$final_virus_destiny = D_REJECT` (iRedMail default: `D_DISCARD`), **and**
+  submission/smtps in `/etc/postfix/master.cf` use `smtpd_proxy_filter`
+  (Amavis's SMTP-based before-queue filtering) instead of `content_filter`.
+  Both are needed for a live SMTP `5xx` on the sender's own connection: with
+  only the destiny change, Postfix's default AFTER-queue `content_filter`
+  already answers the client's DATA command with `250` and queues the
+  message before Amavis ever sees it, so a later reject at re-injection
+  just generates a DSN into the sender's own mailbox instead - confirmed
+  empirically (`mail.log`: `Blocked INFECTED ... {RejectedInternal,
+  Quarantined}` with no exception on the still-open sending session).
+  `smtpd_proxy_filter` streams the message to Amavis synchronously, in the
+  same client session, so a reject becomes smtpd's own response - port 25
+  (inbound from other MTAs, `content_filter` still, main.cf's global
+  default) is deliberately left alone: rejecting anonymous inbound mail
+  this way risks bouncing to a forged sender, which Amavis's own docs warn
+  against.
 
 
 ## Verifying a change
@@ -196,12 +236,13 @@ code; a test is mutation-checked (break the behaviour, watch it fail).
 
 ## Releasing
 
-**Actions → Release → Run workflow** (blank version = today). The workflow
-refuses if the date was already released or `CHANGELOG.md` has no
-`## [YYYY-MM-DD]` section; then it builds on GitHub's amd64 runners, runs
+**Actions → Release → Run workflow** (blank version = the Dockerfile's
+`IREDMAIL_VERSION`, e.g. `1.8.8`; `1.8.8-2` for a rebuild of the same
+iRedMail). The workflow refuses if the version was already released, does
+not match the Dockerfile, or `CHANGELOG.md` has no `## [<version>]` section; then it builds on GitHub's amd64 runners, runs
 the suite from a fresh compose up, requires the rows marked required in
 `ACCEPTANCE.md` to pass, tags the commit, pushes the tested image to
-`ghcr.io/lejmr/iredmail-docker` and `lejmr/iredmail` as `<date>` and
+`ghcr.io/lejmr/iredmail-docker` and `lejmr/iredmail` as `<version>` and
 `latest`, and publishes a GitHub release whose notes are the changelog
 section plus the literal per-row result. Docker Hub needs the repository
 secrets `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`; GHCR works with the

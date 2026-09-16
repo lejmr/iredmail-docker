@@ -13,8 +13,8 @@ file supplies what the skill leaves to the project.
   same maintenance shape as lejmr/dokuwiki-plugin-drawio (dev env, acceptance
   suite, CI incl. weekly rebuild, release button, SECURITY.md, CHANGELOG.md,
   DEVELOPMENT.md). No feature work beyond what the acceptance rows need to
-  pass; image size, ClamAV toggles and overrides are measured and recorded,
-  not optimised. The README states plainly that the maintainer recommends
+  pass - and every row must pass: CI is red on any failing or skipped row
+  (decided 2026-09-16 after a 'recorded rows' gate proved confusing). The README states plainly that the maintainer recommends
   **Stalwart** (https://stalw.art) for new deployments - that is the only
   place Stalwart appears in this repository; nothing here targets it. The
   black-box suite would carry over to any other server, which is why it
@@ -26,8 +26,8 @@ file supplies what the skill leaves to the project.
 - **Fresh environment:** `docker compose -f test/compose.yaml up -d --build`
   starts two servers (A, B) on one network; `bin/test.sh` runs the suite
   against them and tears down. Details in `DEVELOPMENT.md`.
-- **Decisions (2026-09-15):** Debian 13 slim base; Rspamd instead of
-  Amavis+SpamAssassin+ClamAV where the phase allows (ClamAV optional);
+- **Decisions (2026-09-15):** Debian 13 slim base; Amavis+SpamAssassin+ClamAV as iRedMail ships them, ClamAV on by default
+  (`CLAMAV=0` opts out); spam is tagged and filed to Junk, never discarded;
   MariaDB only while SOGo needs it; `admin` CLI inside the image is the
   management contract for the tests, and a web admin UI (phase A: iRedAdmin;
   phase B: Postfixadmin or a minimal page - whichever passes row 20) is

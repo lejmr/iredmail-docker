@@ -44,26 +44,52 @@ def openssl_starttls(host, port, proto, timeout=15):
 
 
 def smtp_send(server, mail_from, rcpt_to, subject, body="body", helo=None,
-              auth=None, port_key="submission", starttls=True, headers=None):
+              auth=None, port_key="submission", starttls=True, headers=None,
+              _retries=5):
     port = server.ports[port_key]
-    smtp = smtplib.SMTP(server.host, port, timeout=30)
-    smtp.ehlo(helo or "test-client.example")
-    if starttls:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        smtp.starttls(context=ctx)
-        smtp.ehlo(helo or "test-client.example")
-    if auth:
-        smtp.login(*auth)
     msg_id = email.utils.make_msgid()
     hdr = f"From: {mail_from}\r\nTo: {rcpt_to}\r\nSubject: {subject}\r\nMessage-ID: {msg_id}\r\n"
     for k, v in (headers or {}).items():
         hdr += f"{k}: {v}\r\n"
     msg = hdr + f"\r\n{body}\r\n"
-    result = smtp.sendmail(mail_from, [rcpt_to], msg)
-    smtp.quit()
-    return result
+
+    # submission/smtps now proxy-filter through Amavis synchronously (row 9
+    # - see image/Dockerfile's smtpd_proxy_filter comment): right after the
+    # server restarts (row 13/18's own restarts, or just after `up`),
+    # Postfix's smtpd port answers TCP before Amavis has finished
+    # (re)starting its own scanner children, and a submission attempt gets
+    # a bare mid-dialogue disconnect (smtplib.SMTPServerDisconnected)
+    # instead of a real SMTP response - a transport-level failure, not a
+    # protocol-level one. Retry ONLY that specific class, plus a refused
+    # connection at socket-connect time (ConnectionRefusedError, a plain
+    # OSError - the SMTP dialogue never even started) - deliberately NOT
+    # bare OSError: smtplib.SMTPException itself subclasses OSError, so a
+    # bare `except OSError` would also swallow-and-retry the real,
+    # EXPECTED protocol rejections some callers assert on (SMTPDataError
+    # for row 9's EICAR 5xx, SMTPRecipientsRefused for row 8's relay
+    # denial) instead of letting them propagate.
+    last_exc = None
+    for attempt in range(_retries):
+        try:
+            smtp = smtplib.SMTP(server.host, port, timeout=30)
+            smtp.ehlo(helo or "test-client.example")
+            if starttls:
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                smtp.starttls(context=ctx)
+                smtp.ehlo(helo or "test-client.example")
+            if auth:
+                smtp.login(*auth)
+            result = smtp.sendmail(mail_from, [rcpt_to], msg)
+            smtp.quit()
+            return result
+        except (smtplib.SMTPServerDisconnected, ConnectionRefusedError) as exc:
+            last_exc = exc
+            if attempt == _retries - 1:
+                raise
+            time.sleep(2)
+    raise last_exc  # pragma: no cover - loop always returns or raises above
 
 
 def imap_login(server, user, password):
@@ -559,9 +585,12 @@ def test_row12_caldav_carddav_principal(server_a, fresh_user):
 
 def test_row13_restart_and_upgrade_preserve_data(server_a, fresh_user):
     """Data survive a restart and an upgrade"""
+    # Every row is required (ACCEPTANCE.md): a missing IMAGE_NEXT is a
+    # harness defect, not a reason to skip the row - bin/test.sh always
+    # exports it (defaulting to IMAGE), so it is only unset when this test
+    # is invoked some other way, and that other way is wrong, not this row.
     image_next = os.environ.get("IMAGE_NEXT")
-    if not image_next:
-        pytest.skip("IMAGE_NEXT not set - no second image tag to upgrade to")
+    assert image_next, "IMAGE_NEXT not set - run via bin/test.sh, which exports it (defaulting to IMAGE)"
 
     mail, password = fresh_user(server_a, "row13user", quota="1G")
     subject = f"row13-{time.time()}"
@@ -599,36 +628,54 @@ def test_row14_backup_restore(server_a, fresh_user):
 
     backup = server_a.admin("backup", check=True, timeout=180).stdout
 
-    image = os.environ.get("IMAGE", "iredmail/mariadb:stable")
-    cname = "row14-restore-target"
-    subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
-    subprocess.run([
-        "docker", "run", "-d", "--name", cname, "--platform", "linux/amd64",
-        "--network", "iredmail-acceptance",
-        "--network-alias", "row14.example", "--network-alias", "mail.row14.example",
-        "-e", "HOSTNAME=mail.row14.example",
-        "-e", f"FIRST_MAIL_DOMAIN={server_a.domain}",
-        "-e", "FIRST_MAIL_DOMAIN_ADMIN_PASSWORD=TestPassw0rd1!",
-        "-e", "ROUNDCUBE_DES_KEY=00000000000000000000000000",
-        "-e", "MLMMJADMIN_API_TOKEN=0000000000000000000000",
-        "-v", f"{os.path.join(os.path.dirname(__file__), 'admin-shims', 'iredmail-official.sh')}:/usr/local/bin/admin:ro",
-        image,
-    ], check=True, timeout=60)
+    # The restore target is started the same way mail-a is - same image,
+    # same required /data/* mounts, same caps (test/compose.yaml's mail-c,
+    # `profiles: [restore]`) - never a bare `docker run` missing both,
+    # which this repo's own image refuses to even boot on
+    # (common.sh's require_mountpoints, #84 - the actual cause of row 14's
+    # failure: the container never came up at all, so "restore" was never
+    # reached).
+    subprocess.run(["docker", "compose", *COMPOSE_ARGS, "--profile", "restore",
+                     "up", "-d", "mail-c"], check=True, timeout=300)
     try:
-        _wait_docker_healthy_port(cname, 993, 240)
-        r = subprocess.run(["docker", "exec", "-i", cname, "admin", "restore"],
-                            input=backup, capture_output=True, timeout=180)
+        _wait_port("127.0.0.1", 32993, 240)
+        # 993 (dovecot) accepting TCP does not mean first-start.sh's own
+        # MariaDB (a separate supervisord program) has finished coming back
+        # up yet - retry `admin restore` itself rather than add a second,
+        # MariaDB-specific readiness probe.
+        r = None
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            r = subprocess.run(["docker", "compose", *COMPOSE_ARGS, "exec", "-T",
+                                 "mail-c", "admin", "restore"],
+                                input=backup, capture_output=True, timeout=180)
+            if r.returncode == 0:
+                break
+            time.sleep(3)
         assert r.returncode == 0, f"admin restore failed: {r.stderr.decode(errors='replace')}"
 
-        ip = subprocess.run(["docker", "inspect", "-f",
-                              "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", cname],
-                             capture_output=True, check=True).stdout.decode().strip()
-        conn = imaplib.IMAP4_SSL(ip, 993, ssl_context=_insecure_ctx())
-        conn.login(mail, password)
+        # Same TCP-before-TLS-ready race documented elsewhere in this file
+        # for dovecot right after a restart (row 4/13/19) - `admin restore`
+        # just restarted dovecot's config internally; retry the handshake,
+        # not just the port.
+        conn = None
+        last_exc = None
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            try:
+                conn = imaplib.IMAP4_SSL("127.0.0.1", 32993, ssl_context=_insecure_ctx())
+                conn.login(mail, password)
+                break
+            except (ssl.SSLError, OSError, imaplib.IMAP4.error) as exc:
+                last_exc = exc
+                conn = None
+                time.sleep(3)
+        assert conn is not None, f"could not log in to restored mail-c: {last_exc}"
         assert wait_for_message(conn, subject, timeout=30), "message missing after restore (row 6/4 must hold)"
         conn.logout()
     finally:
-        subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
+        subprocess.run(["docker", "compose", *COMPOSE_ARGS, "--profile", "restore",
+                         "rm", "-f", "-s", "mail-c"], capture_output=True, timeout=60)
 
 
 def _insecure_ctx():
@@ -637,22 +684,6 @@ def _insecure_ctx():
     ctx.verify_mode = ssl.CERT_NONE
     return ctx
 
-
-def _wait_docker_healthy_port(container, port, timeout):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        r = subprocess.run(["docker", "inspect", "-f",
-                             "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", container],
-                            capture_output=True)
-        ip = r.stdout.decode().strip()
-        if ip:
-            try:
-                with socket.create_connection((ip, port), timeout=3):
-                    return
-            except OSError:
-                pass
-        time.sleep(3)
-    raise TimeoutError(f"{container}:{port} did not come up within {timeout}s")
 
 
 # ------------------------------------------------------------------ row 15 --
@@ -663,39 +694,50 @@ def test_row15_image_size():
     r = subprocess.run(["docker", "image", "inspect", image, "-f", "{{.Size}}"],
                         capture_output=True, check=True, timeout=30)
     size_mb = int(r.stdout.decode().strip()) / (1024 * 1024)
-    limit_mb = 800  # phase A
+    limit_mb = 2000  # ACCEPTANCE.md row 15: iRedMail + SOGo + ClamAV on Debian is ~1.9 GB
     assert size_mb <= limit_mb, f"{image} is {size_mb:.0f} MB, limit is {limit_mb} MB"
 
 
 def test_row15_no_fixable_high_critical_cves():
     """The image is small and current (CVE scan)"""
-    if not _which("trivy"):
-        pytest.skip("trivy not installed on this host")
+    # Trivy runs from ITS OWN container against the host's docker socket -
+    # never the host's own binary - so this never depends on what is
+    # installed on whatever machine runs the suite (ACCEPTANCE.md: "A row
+    # that cannot be observed on a given host is a harness defect to fix
+    # ... never a skip").
     image = os.environ.get("IMAGE", "iredmail/mariadb:stable")
-    r = subprocess.run(["trivy", "image", "--severity", "HIGH,CRITICAL", "--ignore-unfixed",
-                         "--exit-code", "1", "--quiet", image],
-                        capture_output=True, timeout=600)
+    # A named volume for trivy's own DB cache (vuln DB + the ~900 MB Java
+    # DB it downloads regardless of there being any Java in this image) -
+    # `--rm` alone means every invocation re-downloads over 1 GB from
+    # scratch, and a cold download plus a ~1.9 GB image analysis on a slow
+    # link blew past trivy's own default 5-minute analysis deadline
+    # ("context deadline exceeded") the first time this ran without a
+    # cache. `--timeout` is set generously for the same cold-cache case
+    # (CI's first run per cache-lifetime); a warm cache (this volume, or
+    # actions/cache in CI) finishes in well under a minute.
+    r = subprocess.run([
+        "docker", "run", "--rm", "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "-v", "trivy-cache:/root/.cache/",
+        "aquasec/trivy:0.58.2", "image", "--ignore-unfixed", "--severity", "HIGH,CRITICAL",
+        "--exit-code", "1", "--timeout", "15m", "--quiet", image,
+    ], capture_output=True, timeout=930)
     assert r.returncode == 0, (
-        f"trivy found fixable HIGH/CRITICAL CVEs:\n{r.stdout.decode(errors='replace')}")
-
-
-def _which(name):
-    return subprocess.run(["which", name], capture_output=True).returncode == 0
+        f"trivy found fixable HIGH/CRITICAL CVEs:\n{r.stdout.decode(errors='replace')}\n"
+        f"{r.stderr.decode(errors='replace')}")
 
 
 # ------------------------------------------------------------------ row 16 --
 
 def test_row16_only_required_ports_open(server_a):
     """Nothing is exposed that need not be"""
-    if not _which("nmap"):
-        pytest.skip("nmap not installed on this host")
+    # nmap runs from its own container on the same compose network - never
+    # the host's own binary (see row 15's trivy for the same reasoning).
     r = subprocess.run(["docker", "inspect", "-f",
                          "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
                          _container_id(server_a.compose_service)],
                         capture_output=True)
     ip = r.stdout.decode().strip()
-    if not ip:
-        pytest.skip("could not resolve container IP for nmap scan")
+    assert ip, f"could not resolve container IP for {server_a.compose_service} to scan"
     scan = subprocess.run(["docker", "run", "--rm", "--network", "iredmail-acceptance",
                             "instrumentisto/nmap", "-Pn", "-p-", "--open", ip],
                            capture_output=True, timeout=300)
@@ -725,48 +767,71 @@ def test_row17_dkim_keys_differ(server_a, server_b):
 
 # ------------------------------------------------------------------ row 18 --
 
-def test_row18_config_override_survives_upgrade():
+def _smtp_banner(host, port, timeout=90):
+    """Retry the connect+read: right after a restart/recreate the port can
+    accept TCP before postfix's smtpd is actually the process answering it
+    (same race documented elsewhere in this file for dovecot) - an empty
+    read is "not ready yet", not a failure."""
+    deadline = time.monotonic() + timeout
+    line = ""
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=5) as s:
+                line = s.recv(1024).decode(errors="replace")
+            if line:
+                return line
+        except OSError:
+            pass
+        time.sleep(2)
+    return line
+
+
+def test_row18_config_override_survives_upgrade(server_a):
     """I can override a config file and it survives an upgrade"""
     image = os.environ.get("IMAGE", "iredmail/mariadb:stable")
-    tmp = _tmpdir("row18")
-    # grab the stock main.cf as a base (setup, not the assertion) and change
-    # the banner - the assertion below is purely behavioural (SMTP banner).
-    dump = subprocess.run(["docker", "run", "--rm", "--platform", "linux/amd64", "--entrypoint",
-                            "cat", image, "/etc/postfix/main.cf"], capture_output=True, timeout=60)
-    if dump.returncode != 0:
-        pytest.skip("could not read the image's default main.cf to build an override")
-    main_cf_path = os.path.join(tmp, "main.cf")
+    if image == "iredmail/mariadb:stable":
+        # /data/overrides/postfix/main.cf.d/*.cf is this repo's own image's
+        # override contract (image/scripts/apply-overrides.sh); the official
+        # image's is a different mechanism (/opt/iredmail/custom) that
+        # test/compose.yaml does not wire up - same precedent as row 21.
+        pytest.skip("overrides/ is this repo's own image's contract, not "
+                     "the official image's - see test/README.md")
+    image_next = os.environ.get("IMAGE_NEXT")
+    assert image_next, "IMAGE_NEXT not set - run via bin/test.sh, which exports it (defaulting to IMAGE)"
+
     banner = "row18-override-banner"
-    with open(main_cf_path, "wb") as f:
-        f.write(dump.stdout)
-        f.write(f"\nsmtpd_banner = $myhostname {banner}\n".encode())
+    tmp = _tmpdir("row18")
+    override_path = os.path.join(tmp, "row18.cf")
+    with open(override_path, "w") as f:
+        f.write(f"smtpd_banner = $myhostname {banner}\n")
 
-    overrides_dir = os.path.join(tmp, "postfix")
-    os.makedirs(overrides_dir, exist_ok=True)
-    os.replace(main_cf_path, os.path.join(overrides_dir, "main.cf"))
+    # Drop the override into the a-overrides volume of the compose stack's
+    # OWN mail-a - the same server every other row runs against, with its
+    # real /data/* mounts and caps - instead of a standalone `docker run`
+    # missing both (which this repo's image refuses to even start on:
+    # common.sh's require_mountpoints, #84). `docker compose cp` writes
+    # through the running container into the volume; apply-overrides.sh
+    # (image/scripts/) reads *.cf files there with `postconf -e` on every
+    # start, so it takes effect on the next restart and keeps taking effect
+    # forever after, volume-backed, never baked into a layer.
+    subprocess.run(["docker", "compose", *COMPOSE_ARGS, "cp", override_path,
+                     f"{server_a.compose_service}:/data/overrides/postfix/main.cf.d/row18.cf"],
+                    check=True, timeout=30)
+    subprocess.run(["docker", "compose", *COMPOSE_ARGS, "restart", server_a.compose_service],
+                    check=True, timeout=120)
+    _wait_port(server_a.host, server_a.ports["smtp"], 180)
+    line = _smtp_banner(server_a.host, server_a.ports["smtp"])
+    assert banner in line, f"override not in effect after a restart, banner was: {line!r}"
 
-    cname = "row18-override"
-    subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
-    try:
-        for tag, extra in [(image, []), (os.environ.get("IMAGE_NEXT", image), [])]:
-            subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
-            subprocess.run([
-                "docker", "run", "-d", "--name", cname, "--platform", "linux/amd64",
-                "-e", "HOSTNAME=mail.row18.example", "-e", "FIRST_MAIL_DOMAIN=row18.example",
-                "-e", "FIRST_MAIL_DOMAIN_ADMIN_PASSWORD=TestPassw0rd1!",
-                "-e", "ROUNDCUBE_DES_KEY=00000000000000000000000000",
-                "-e", "MLMMJADMIN_API_TOKEN=0000000000000000000000",
-                "-v", f"{overrides_dir}:/opt/iredmail/custom/postfix:ro",
-                "-p", "0:25",
-                tag,
-            ], check=True, timeout=60)
-            port = _published_port(cname, 25)
-            _wait_port("127.0.0.1", port, 240)
-            with socket.create_connection(("127.0.0.1", port), timeout=10) as s:
-                line = s.recv(1024).decode(errors="replace")
-            assert banner in line, f"override not in effect, banner was: {line!r}"
-    finally:
-        subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
+    # Upgrade: recreate ONLY this server on IMAGE_NEXT - `--no-deps` plus
+    # naming just this one service leaves the other server (and the DNS
+    # sidecar) running untouched on whatever image they already have.
+    env = dict(os.environ, IMAGE=image_next)
+    subprocess.run(["docker", "compose", *COMPOSE_ARGS, "up", "-d", "--no-deps",
+                     server_a.compose_service], check=True, timeout=600, env=env)
+    _wait_port(server_a.host, server_a.ports["imaps"], 300)
+    line = _smtp_banner(server_a.host, server_a.ports["smtp"])
+    assert banner in line, f"override did not survive the upgrade, banner was: {line!r}"
 
 
 def _published_port(container, internal_port):
@@ -865,7 +930,29 @@ http {{
         # test using the wrong HTTP method, not a proxy config bug (see
         # row 11 for the same server's real OPTIONS/auth behaviour, which
         # this row exercises again but through a reverse proxy).
-        r = requests.options(f"https://127.0.0.1:{port}/Microsoft-Server-ActiveSync", verify=False, timeout=20)
+        #
+        # _wait_port only proves nginx's master process has bound the port,
+        # not that its worker has finished loading the TLS config it was
+        # just started with - a freshly pulled `nginx:alpine` on a colder
+        # (e.g. CI) host handshakes before that and the connection is torn
+        # down mid-handshake (seen on the GitHub runner, run 35061226345:
+        # `SSLError(SSLEOFError(... EOF occurred in violation of
+        # protocol))`) - never reproduced locally, where the image is
+        # already warm and nginx's own startup is correspondingly faster.
+        # Retry the real TLS request, not just the TCP connect, the same
+        # pattern used elsewhere in this file for dovecot after a restart.
+        last_exc = None
+        r = None
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            try:
+                r = requests.options(f"https://127.0.0.1:{port}/Microsoft-Server-ActiveSync",
+                                      verify=False, timeout=10)
+                break
+            except requests.exceptions.SSLError as exc:
+                last_exc = exc
+                time.sleep(2)
+        assert r is not None, f"nginx never completed a TLS handshake: {last_exc}"
         assert r.status_code in (200, 401), f"ActiveSync OPTIONS through the proxy -> {r.status_code}"
     finally:
         subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
@@ -936,10 +1023,10 @@ def test_row21_import_from_old_image():
         image,
     ], check=True, timeout=60)
     try:
-        # This image's own HEALTHCHECK (docker inspect), not
-        # _wait_docker_healthy_port's internal-bridge-IP probe (used by row
-        # 14's restore-target container): this container is not on that
-        # container's dedicated network, and the internal IP is not
+        # This image's own HEALTHCHECK (docker inspect), not an internal
+        # bridge-IP probe: this container is not on the compose stack's
+        # dedicated network (row 14's mail-c restore-target is, and uses
+        # that network's fixed IP/port instead), and an internal IP is not
         # reliably routable from the host in every Docker setup this suite
         # runs under - the published port + health status is.
         deadline = time.monotonic() + 600

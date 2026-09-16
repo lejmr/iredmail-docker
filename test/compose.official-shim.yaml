@@ -10,3 +10,5 @@ services:
     volumes: *admin-shim
   mail-b:
     volumes: *admin-shim
+  mail-c:
+    volumes: *admin-shim

@@ -10,22 +10,24 @@
 > will not get new features.
 
 An all-in-one [iRedMail](https://www.iredmail.org) mail server - Postfix,
-Dovecot, MariaDB, Amavis + SpamAssassin (ClamAV optional), iRedAPD,
+Dovecot, MariaDB, Amavis + SpamAssassin + ClamAV (on by default), iRedAPD,
 iRedAdmin, SOGo (ActiveSync, CalDAV/CardDAV), nginx - in one image on
-`debian:13-slim`, supervised by supervisord, without `--privileged`.
+`debian:13-slim`, supervised by supervisord, without `--privileged`. Spam is
+tagged and filed to the Junk folder, never silently discarded; a virus is
+rejected outright (a live SMTP 5xx to the sender), never silently dropped.
 
 ## Run it
 
 ```yaml
 services:
   mail:
-    image: ghcr.io/lejmr/iredmail-docker:latest   # or a dated tag - see Releases
+    image: ghcr.io/lejmr/iredmail-docker:latest   # or a version tag such as 1.8.8 - see Releases
     hostname: mail.example.org
     environment:
       MAIL_DOMAIN: example.org
       POSTMASTER_PASSWORD: change-me            # or POSTMASTER_PASSWORD_FILE=/run/secrets/…
       TZ: Europe/Prague
-      CLAMAV: "0"                               # "1" runs ClamAV (about 1 GB more RAM)
+      CLAMAV: "1"                               # default; "0" turns it off (saves about 1 GB RAM)
     ports: ["25:25", "465:465", "587:587", "993:993", "443:443", "80:80"]
     volumes:
       - mysql:/data/mysql
@@ -114,14 +116,14 @@ twice.
 
 ## What is tested
 
-[`ACCEPTANCE.md`](ACCEPTANCE.md) lists twenty things a person running a
+[`ACCEPTANCE.md`](ACCEPTANCE.md) lists twenty-one things a person running a
 mail server expects, in their words, observable only from outside the
 container. `test/` proves them against two servers started from nothing
 that exchange mail through a private DNS with real MX and DKIM records. CI
 runs the suite on every pull request and rebuilds the image weekly, so a
 base-image security update or a broken upstream repository shows up before
-a user reports it. Every release's notes record which rows pass and which
-do not.
+a user reports it. A release is only published when every row passes; the
+release notes carry the per-row table.
 
 ## Security
 
