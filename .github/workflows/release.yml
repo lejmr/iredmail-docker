@@ -134,7 +134,12 @@ jobs:
             awk -v v="$v" '$0 == "## [" v "]" {f=1; next} f && /^## \[/ {exit} f {print}' CHANGELOG.md
             echo; echo '## Acceptance rows in this release'; echo
             cat rows.md
-            echo; echo "Image: \`ghcr.io/${{ github.repository }}:$v\`"
+            echo
+            if [ "${{ steps.dh.outputs.configured }}" = "true" ]; then
+              echo "Image: [\`lejmr/iredmail:$v\`](https://hub.docker.com/r/lejmr/iredmail/tags) on Docker Hub (also \`lejmr/iredmail:latest\`) and [\`ghcr.io/${{ github.repository }}:$v\`](https://github.com/${{ github.repository }}/pkgs/container/iredmail-docker) on GHCR"
+            else
+              echo "Image: [\`ghcr.io/${{ github.repository }}:$v\`](https://github.com/${{ github.repository }}/pkgs/container/iredmail-docker) on GHCR"
+            fi
           } > release-body.md
 
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
