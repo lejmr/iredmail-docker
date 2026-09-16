@@ -1,0 +1,87 @@
+name: watchdog
+
+# A dormant repository's problems are silent: CI that started failing, a
+# scheduled workflow GitHub disabled after 60 days of inactivity, an issue
+# nobody saw for four years. This job looks at THIS repository and at its
+# sibling once a week and turns anything that needs a human into a red run,
+# which GitHub emails to the maintainer. The sibling half matters: a repo
+# whose schedules are disabled cannot report that itself.
+#
+# It reads only structured facts - counts, numbers, dates, states. Never a
+# title, body or comment: that text is written by strangers, it is not
+# needed to decide "does this need a human", and it must not end up in any
+# summary an assistant later reads (prompt injection).
+#
+# Silence an issue that may wait: label it `watchdog-ignore`.
+on:
+  schedule:
+    - cron: '47 5 * * 4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SIBLING: lejmr/dokuwiki-plugin-drawio
+    steps:
+      - name: look at both repositories
+        run: |
+          attention=0
+          report() { printf '%s\n' "$*" | tee -a "$GITHUB_STEP_SUMMARY"; }
+
+          for repo in "${{ github.repository }}" "$SIBLING"; do
+            report "## $repo"
+
+            # Issues and pull requests: numbers only, never titles.
+            issues=$(gh issue list -R "$repo" --state open --limit 100 \
+              --json number,labels \
+              --jq '[.[] | select([.labels[].name] | index("watchdog-ignore") | not) | .number] | join(" ")')
+            prs=$(gh pr list -R "$repo" --state open --limit 100 --json number --jq 'map(.number)|join(" ")')
+            [ -n "$issues" ] && { report "- issues waiting: #${issues// / #}"; attention=1; } || report "- issues waiting: none"
+            [ -n "$prs" ] && { report "- pull requests open: #${prs// / #}"; attention=1; } || report "- pull requests open: none"
+
+            # Default-branch CI.
+            # A run still in flight has an empty conclusion - that is not a
+            # failure, so fall back to its status and let it pass.
+            ci=$(gh run list -R "$repo" --branch master --limit 10 \
+              --json workflowName,status,conclusion,createdAt,url \
+              --jq '[.[] | select(.workflowName == "CI")][0] | "\(if (.conclusion // "") == "" then .status else .conclusion end) \(.createdAt[0:10]) \(.url)"')
+            report "- CI on master: ${ci:-never run}"
+            case "$ci" in success*|in_progress*|queued*|requested*|waiting*|pending*|"") ;; *) attention=1 ;; esac
+
+            # Scheduled workflows GitHub turned off, and whether the weekly
+            # runs are actually happening.
+            off=$(gh workflow list -R "$repo" --json name,state --jq '[.[] | select(.state != "active") | .name] | join(", ")')
+            [ -n "$off" ] && { report "- workflows disabled: $off"; attention=1; }
+            head=$(gh api "repos/$repo/commits/master" --jq '.commit.committer.date[0:10]')
+            head_age=$(( ( $(date +%s) - $(date -d "$head" +%s) ) / 86400 ))
+            last=$(gh run list -R "$repo" --event schedule --limit 1 --json createdAt --jq '.[0].createdAt[0:10] // ""')
+            if [ -z "$last" ]; then
+              # A repository set up days ago has simply not reached its first
+              # scheduled run yet; only an established one owes us a run.
+              report "- scheduled runs: never"
+              [ "$head_age" -gt 10 ] && attention=1
+            else
+              age=$(( ( $(date +%s) - $(date -d "$last" +%s) ) / 86400 ))
+              report "- last scheduled run: $last (${age}d ago)"
+              [ "$age" -gt 10 ] && attention=1
+            fi
+
+            # Released code versus what is on master.
+            rel=$(gh release list -R "$repo" --limit 1 --json tagName,publishedAt --jq '.[0] | "\(.tagName) (\(.publishedAt[0:10]))"')
+            report "- latest release: ${rel:-none} | master: $head"
+            report ""
+          done
+
+          if [ "$attention" -eq 0 ]; then
+            report "**All quiet.** Nothing here needs you."
+          else
+            report "**Something needs you** - open the numbers above in a browser."
+          fi
+          exit "$attention"
