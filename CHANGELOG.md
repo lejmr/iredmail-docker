@@ -59,8 +59,6 @@ buildable, tested, current one.
 ### Known limitations (not planned)
 
 - Image size ≈ 2 GB.
-- Acceptance rows that do not pass in this release are listed in the
-  release notes with their literal result.
 - amd64 only (SOGo has no arm64 build).
 - No OAuth2, no LDAP, no Kubernetes manifests.
 

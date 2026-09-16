@@ -443,7 +443,7 @@ RUN chmod +x /usr/local/bin/admin /usr/local/bin/healthcheck.sh /entrypoint.sh \
 EXPOSE 25 465 587 993 443 80
 
 # ClamAV on by default (restores the old lejmr/iredmail image's behaviour -
-# see CHANGELOG.md [Unreleased]); CLAMAV=0 is an explicit opt-out for hosts
+# see CHANGELOG.md [1.8.8]); CLAMAV=0 is an explicit opt-out for hosts
 # tight on RAM. iRedMail's installer cannot skip installing ClamAV either
 # way, so the packages are always present; entrypoint.sh only starts/stops
 # its two supervisord programs and Amavis's ClamAV::Daemon scanner line.
