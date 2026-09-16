@@ -40,6 +40,9 @@ jobs:
         with:
           dockerfile: image/Dockerfile
           failure-threshold: error
+          # recorded, not fixed in this refresh: apt pins (weekly rebuild wants
+          # the latest security updates), pipefail on installer pipes, style
+          ignore: DL3008,DL3059,DL4006,SC2016,SC1091,SC2155
 
   build:
     name: build + acceptance suite
@@ -68,10 +71,15 @@ jobs:
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:0.58.2 image --ignore-unfixed --severity HIGH,CRITICAL \
             --exit-code 0 --format table iredmail-phase-a:dev | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: suite prerequisites (row 16 scans ports with nmap)
+        run: sudo apt-get -qq install -y nmap >/dev/null
       - name: acceptance suite from a fresh compose up
         run: IMAGE=iredmail-phase-a:dev bin/test.sh || true
       - name: required rows must pass; every row is recorded
-        run: python3 bin/required-rows.py test-results/junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
+        # pipefail: without it `| tee` hid a non-zero exit from the gate
+        run: |
+          set -o pipefail
+          python3 bin/required-rows.py test-results/junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
       - name: test report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

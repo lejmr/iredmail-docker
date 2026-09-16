@@ -50,6 +50,9 @@ jobs:
           v="${{ steps.version.outputs.version }}"
           grep -q "^## \[$v\]" CHANGELOG.md || { echo "::error::CHANGELOG.md has no '## [$v]' section"; exit 1; }
 
+      - name: suite prerequisites (row 16 scans ports with nmap)
+        run: sudo apt-get -qq install -y nmap >/dev/null
+
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: build
@@ -64,6 +67,7 @@ jobs:
       - name: acceptance suite from a fresh compose up
         id: suite
         run: |
+          set -o pipefail
           IMAGE=iredmail-phase-a:dev bin/test.sh || true
           python3 bin/required-rows.py test-results/junit.xml | tee rows.md
 

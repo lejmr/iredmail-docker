@@ -458,7 +458,9 @@ def test_row09_virus_is_rejected(server_a, server_b, fresh_user):
 def test_row10_tls_in_transit(server_a, port_key, starttls_proto):
     """Mail is encrypted in transit"""
     out = openssl_starttls(server_a.host, server_a.ports[port_key], starttls_proto)
-    assert re.search(r"Protocol\s*:\s*TLSv1\.[23]", out), f"no TLS1.2+ reported:\n{out}"
+    # openssl 1.1 prints "Protocol  : TLSv1.3"; openssl 3.x prints
+    # "Protocol version: TLSv1.3" (and "New, TLSv1.3, Cipher ...") - accept both
+    assert re.search(r"(Protocol(\s+version)?\s*:\s*|New,\s*)TLSv1\.[23]", out), f"no TLS1.2+ reported:\n{out}"
     assert f"CN = {server_a.host if False else 'mail.a.example'}" in out or "mail.a.example" in out, (
         f"certificate CN does not match mail.a.example:\n{out}")
 
