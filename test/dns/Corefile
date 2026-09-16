@@ -16,3 +16,19 @@ example. {
     log
     errors
 }
+
+# Row 9 (virus, ClamAV on by default): mail-a/mail-b use ONLY this sidecar
+# as their resolver (test/compose.yaml's `dns:` field), and freshclam needs
+# to resolve real internet hostnames (database.clamav.net and friends) to
+# fetch the virus signature database on first start - without a catch-all
+# forwarder, every non-"example." query got NXDOMAIN from this file
+# plugin's implicit deny, so freshclam could never reach the internet
+# and clamd never finished loading (confirmed: `docker exec ... freshclam`
+# failed name resolution before this block existed). "." matches any name
+# this server isn't itself authoritative for; CoreDNS tries the more
+# specific "example." zone above first.
+. {
+    forward . 8.8.8.8 1.1.1.1
+    log
+    errors
+}
