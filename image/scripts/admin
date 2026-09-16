@@ -23,6 +23,13 @@ Usage: admin <command> [args]
 
   backup                              tar (SQL dumps + vmail + dkim + certs) to stdout
   restore                             restore from stdin, into an EMPTY server
+
+  import-legacy <dump.sql> <vmail.tar> [--force]
+                                       one-time import from a
+                                       lejmr/iredmail:mysql-1.3* container
+                                       (ACCEPTANCE.md row 21). Refuses unless
+                                       this server is fresh (only its own
+                                       initial domain exists), unless --force.
 EOF
 }
 
@@ -180,6 +187,169 @@ cmd_restore() {
     echo "restore complete"
 }
 
+cmd_import_legacy() {
+    # ACCEPTANCE.md row 21: move from lejmr/iredmail:mysql-1.3* (iRedMail
+    # 1.3.2) to this image without losing anything.
+    #
+    # Schema compatibility: the columns this admin CLI reads/writes on
+    # domain/mailbox/forwardings (domain,transport,settings,created /
+    # username,password,name,storagebasedirectory,storagenode,maildir,
+    # quota,domain,active,passwordlastchange,created / address,forwarding,
+    # domain,dest_domain,is_forwarding) are byte-identical between iRedMail
+    # 1.3.2's `vmail` schema and this image's - verified empirically with
+    # `SHOW CREATE TABLE` against both a live lejmr/iredmail:mysql-1.3
+    # container and this image (see test/fixtures/legacy-1.3/MAKE.md). The
+    # contributor's own 1.3.2->1.6.1 migration
+    # (git show refresh/foundation:"Update to 1.6.1/iredmail-MySQL-Update-from-1.3.2-to-1.6.1.sql")
+    # only drops/adds *other* mailbox columns (allowedsenders/…,
+    # enablesogo*) and touches maillist_owners/roundcubemail/sogo - none of
+    # the six columns above. iRedMail's own upgrade notes for 1.6.1 through
+    # 1.8.8 (https://docs.iredmail.org/upgrade.iredmail.1.6.1-1.6.3.html
+    # through .../upgrade.iredmail.1.8.7-1.8.8.html) likewise only add
+    # optional feature columns/tables (2FA, backupmx, sender/recipient BCC,
+    # mlmmj owners, sieve settings) - none rename or remove the identifiers
+    # this image depends on. So this command reads the legacy dump's
+    # domain/mailbox/forwardings rows with an explicit column list (the
+    # same list `admin domain/user add` writes) straight into the live
+    # `vmail` database - there is no intermediate ALTER TABLE chain to run
+    # for the subset of the schema this image actually uses. Passwords are
+    # copied byte-for-byte: iRedMail has used Dovecot's own password
+    # schemes (SSHA512 here) since long before 1.3.2, so they verify
+    # unchanged - login is with the OLD password, not a new one. DKIM keys
+    # are NOT portable (the legacy dump has none this image can read) and
+    # are regenerated per domain below; the operator must republish DNS.
+    local dump="${1:-}" vmailtar="${2:-}" force=0
+    shift $(( $# < 2 ? $# : 2 )) || true
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --force) force=1; shift ;;
+            *) echo "unknown option: $1" >&2; exit 2 ;;
+        esac
+    done
+    [ -z "$dump" ] || [ -z "$vmailtar" ] && {
+        echo "usage: admin import-legacy <dump.sql> <vmail.tar> [--force]" >&2; exit 2; }
+    [ -f "$dump" ] || { echo "no such file: $dump" >&2; exit 2; }
+    [ -f "$vmailtar" ] || { echo "no such file: $vmailtar" >&2; exit 2; }
+
+    local ndomains
+    ndomains="$(mysql_admin -N -e "SELECT COUNT(*) FROM domain;")"
+    if [ "$ndomains" -gt 1 ] && [ "$force" -ne 1 ]; then
+        echo "FATAL: this server already has ${ndomains} domains - import-legacy is only for a fresh server (use --force to override)" >&2
+        exit 1
+    fi
+
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    local scratch="legacy_import_$$"
+
+    # Extract only the `vmail` database section of the --all-databases dump
+    # (mysqldump emits one "-- Current Database: `NAME`" marker per db) and
+    # load it under a scratch database name - never into the live `vmail`
+    # db, which would clobber it before we get a chance to reconcile.
+    # The dump's session-variable footer for the vmail section
+    # (SET TIME_ZONE=@OLD_TIME_ZONE etc.) restores variables saved once, in
+    # the dump's very first lines, before any "-- Current Database:"
+    # marker - prepend those SET @OLD_... lines too, or the restore
+    # statements reference NULLs and mysql refuses them.
+    grep -E '^/\*![0-9]+ SET @OLD_' "$dump" > "$tmp/vmail-section.sql"
+    awk -v db='vmail' '
+        /^-- Current Database: `/ { in_db = ($0 == "-- Current Database: `" db "`"); }
+        in_db { print }
+    ' "$dump" | sed "s/\`vmail\`/\`${scratch}\`/g" >> "$tmp/vmail-section.sql"
+    grep -q "CREATE TABLE .*\`mailbox\`" "$tmp/vmail-section.sql" || {
+        echo "FATAL: no vmail database section found in ${dump} - not a --all-databases dump?" >&2
+        exit 1
+    }
+    mysql_root -e "DROP DATABASE IF EXISTS \`${scratch}\`;"
+    mysql_root < "$tmp/vmail-section.sql"
+
+    # Consistency checks (exit non-zero on any of these, per ACCEPTANCE row 21).
+    local bad_domain
+    bad_domain="$(mysql_root -N -e "
+        SELECT DISTINCT m.domain FROM ${scratch}.mailbox m
+        LEFT JOIN ${scratch}.domain d ON d.domain = m.domain
+        WHERE d.domain IS NULL;")"
+    if [ -n "$bad_domain" ]; then
+        echo "FATAL: mailbox references a domain missing from the dump: ${bad_domain}" >&2
+        mysql_root -e "DROP DATABASE \`${scratch}\`;"
+        exit 1
+    fi
+
+    mkdir -p "$tmp/vmail-extract"
+    tar -xf "$vmailtar" -C "$tmp/vmail-extract"
+    [ -d "$tmp/vmail-extract/var/vmail" ] || {
+        echo "FATAL: ${vmailtar} has no var/vmail/ - not a tar of /var/vmail" >&2
+        mysql_root -e "DROP DATABASE \`${scratch}\`;"
+        exit 1
+    }
+
+    local missing_maildirs="" user maildir folder relpath
+    while IFS=$'\t' read -r user maildir folder; do
+        relpath="vmail1/${maildir}${folder}"
+        [ -d "$tmp/vmail-extract/var/vmail/${relpath}" ] || missing_maildirs="${missing_maildirs}${user} "
+    done <<< "$(mysql_root -N -e "SELECT username, maildir, mailboxfolder FROM ${scratch}.mailbox WHERE active=1;")"
+    if [ -n "$missing_maildirs" ]; then
+        echo "FATAL: no Maildir in ${vmailtar} for: ${missing_maildirs}" >&2
+        mysql_root -e "DROP DATABASE \`${scratch}\`;"
+        exit 1
+    fi
+
+    # Insert domains, mailboxes (password hashes copied as-is) and
+    # forwardings (aliases + the per-user self-forward) - explicit column
+    # lists, see the schema-compatibility note above.
+    # mysql_root, not mysql_admin: admin_cli has no grant on the scratch
+    # database these SELECTs cross-database-join against.
+    mysql_root vmail -e "
+        INSERT IGNORE INTO domain (domain, transport, settings, created)
+        SELECT domain, transport, settings, created FROM ${scratch}.domain WHERE active=1;"
+    mysql_root vmail -e "
+        INSERT IGNORE INTO mailbox
+            (username, password, name, storagebasedirectory, storagenode,
+             maildir, quota, domain, active, passwordlastchange, created)
+        SELECT username, password, name, storagebasedirectory, storagenode,
+               maildir, quota, domain, active, passwordlastchange, created
+        FROM ${scratch}.mailbox WHERE active=1;"
+    mysql_root vmail -e "
+        INSERT IGNORE INTO forwardings
+            (address, forwarding, domain, dest_domain, is_forwarding)
+        SELECT address, forwarding, domain, dest_domain, is_forwarding
+        FROM ${scratch}.forwardings;"
+
+    mysql_root -e "DROP DATABASE \`${scratch}\`;"
+
+    # Restore Maildirs into this image's live layout - identical to the
+    # legacy one (storagebasedirectory=/var/vmail, storagenode=vmail1 for
+    # both), so the extracted tree drops in unchanged.
+    cp -a "$tmp/vmail-extract/var/vmail/." /var/vmail/
+    chown -R vmail:vmail /var/vmail
+
+    # DKIM keys are not carried over (see note above) - regenerate one per
+    # imported domain and print the record; this replaces
+    # regenerate_amavis_dkim_include's own generation for a clear per-domain
+    # summary.
+    echo "import complete."
+    echo
+    echo "domains:"
+    local d n_users n_msgs
+    for d in $(mysql_root vmail -N -e "SELECT domain FROM domain;"); do
+        n_users="$(mysql_admin -N -e "SELECT COUNT(*) FROM mailbox WHERE domain='${d}';")"
+        echo "  - ${d} (${n_users} mailbox(es))"
+    done
+    echo
+    echo "messages restored:"
+    while IFS=$'\t' read -r user maildir folder; do
+        n_msgs="$(find "${VMAIL_STORAGE_BASE}/${maildir}${folder}" -type f \( -path '*/cur/*' -o -path '*/new/*' \) 2>/dev/null | wc -l | tr -d ' ')" || n_msgs=0
+        echo "  - ${user}: ${n_msgs} message(s)"
+    done <<< "$(mysql_admin -N -e "SELECT username, maildir, mailboxfolder FROM mailbox;")"
+    echo
+    echo "DKIM (keys are NEW - update DNS at your registrar/DNS host before relying on outbound DKIM):"
+    for d in $(mysql_root vmail -N -e "SELECT domain FROM domain;"); do
+        generate_dkim_key "$d"
+        echo "  dkim._domainkey.${d}.  IN TXT \"$(dkim_dns_record "$d")\""
+    done
+    regenerate_amavis_dkim_include
+}
+
 cmd="${1:-}"; shift || true
 case "$cmd" in
     domain)
@@ -203,5 +373,6 @@ case "$cmd" in
     dkim) cmd_dkim "${1:-}" ;;
     backup) cmd_backup ;;
     restore) cmd_restore ;;
+    import-legacy) cmd_import_legacy "$@" ;;
     *) usage; [ "$cmd" = "" ] && exit 2 || exit 2 ;;
 esac

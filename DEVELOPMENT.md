@@ -72,6 +72,14 @@ into the zone) - so row 6's `dkim=pass` is real, not simulated.
 `test/junit.xml` is written on every run; the release workflow turns it
 into the per-row table in the release notes.
 
+Row 21 (import from the old `lejmr/iredmail:mysql-1.3*` image) uses a
+fixture checked into `test/fixtures/legacy-1.3/` (`dump.sql`, `vmail.tar`) -
+a real `mysqldump`/`tar` taken off a real old container, not hand-built
+bytes. The suite never touches Docker Hub for it. To regenerate it (e.g.
+after changing what `import-legacy` expects), see
+`test/fixtures/legacy-1.3/MAKE.md` and run
+`test/fixtures/legacy-1.3/make-fixture.sh`.
+
 ## Details
 
 ### This host
@@ -134,6 +142,8 @@ image, reports its size, runs the acceptance suite against a fresh
     admin dkim <domain>
     admin backup > backup.tar                 # SQL dumps + vmail + dkim + certs
     admin restore < backup.tar                # into an EMPTY server only
+    admin import-legacy <dump.sql> <vmail.tar> [--force]
+                                               # one-time move from lejmr/iredmail:mysql-1.3*
 
 Every domain gets its own 2048-bit DKIM key (`/var/lib/dkim/<domain>.pem`);
 `admin domain add`/`rm` fully regenerate Amavis's

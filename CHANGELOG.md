@@ -22,7 +22,11 @@ buildable, tested, current one.
   `/data/certs`, `/data/secrets`, `/data/overrides`); the container refuses
   to start if one is not mounted.
 - Management is the `admin` command (domains, users, quotas, DKIM records,
-  backup, restore) plus iRedAdmin.
+  backup, restore, `import-legacy`) plus iRedAdmin.
+- `admin import-legacy <dump.sql> <vmail.tar>` moves a `lejmr/iredmail:mysql-1.3*`
+  server (the old CentOS 7 image) onto this one in one command: domains,
+  users, aliases, quotas and mail all carry over, old passwords work
+  unchanged - see the README's "Upgrade" section (row 21).
 - Configuration overrides that survive upgrades: `overrides/postfix/main.cf.d/*.cf`
   and `overrides/dovecot/*.conf`.
 - Schema migrations run automatically on start (`versions` table).
