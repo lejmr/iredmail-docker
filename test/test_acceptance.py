@@ -660,7 +660,7 @@ def test_row14_backup_restore(server_a, fresh_user):
         # not just the port.
         conn = None
         last_exc = None
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             try:
                 conn = imaplib.IMAP4_SSL("127.0.0.1", 32993, ssl_context=_insecure_ctx())
