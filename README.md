@@ -104,6 +104,14 @@ ACCEPTANCE.md row 21 is the machine-checked proof, from a fixture taken off
 a real old image - see `test/fixtures/legacy-1.3/MAKE.md`. Test on a copy
 first.
 
+Two things the import deliberately does not carry: DKIM private keys (new
+keys are generated per domain - publish the printed TXT records before you
+switch DNS to the new server) and iRedAdmin admin flags of the old accounts
+(`postmaster@<domain>` arrives as a plain mailbox; the new server's own
+postmaster is the global admin and manages the imported domains). Running
+`import-legacy --force` again with the same files is safe: it adds nothing
+twice.
+
 ## What is tested
 
 [`ACCEPTANCE.md`](ACCEPTANCE.md) lists twenty things a person running a
