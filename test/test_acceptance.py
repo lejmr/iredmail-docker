@@ -12,12 +12,15 @@ scope here; only their machine-observable part is tested.
 """
 import email.utils
 import imaplib
+import io
 import os
 import re
 import smtplib
 import socket
 import ssl
 import subprocess
+import tarfile
+import tempfile
 import time
 
 import pytest
@@ -999,6 +1002,35 @@ def test_row21_import_from_old_image():
         dkim_out = subprocess.run(["docker", "exec", cname, "admin", "dkim", "legacy.example"],
                                    capture_output=True, check=True, timeout=30).stdout.decode()
         assert "IN TXT" in dkim_out and "v=DKIM1" in dkim_out
+
+        # A vmail.tar with a path-traversal member (`../../etc/...`) must be
+        # refused, and nothing may land outside /var/vmail - the failure
+        # mode here is writing attacker-controlled files onto the host
+        # filesystem through a "legacy backup", not just a bad import.
+        with tempfile.NamedTemporaryFile(suffix=".tar") as hostile_f:
+            with tarfile.open(fileobj=hostile_f, mode="w") as tf:
+                for d in ("var/vmail/", "var/vmail/vmail1/"):
+                    ti = tarfile.TarInfo(name=d)
+                    ti.type = tarfile.DIRTYPE
+                    tf.addfile(ti)
+                payload = b"pwned\n"
+                ti = tarfile.TarInfo(name="../../../etc/row21-hostile-marker")
+                ti.size = len(payload)
+                tf.addfile(ti, io.BytesIO(payload))
+            hostile_f.flush()
+            subprocess.run(["docker", "cp", hostile_f.name, f"{cname}:/tmp/hostile.tar"],
+                            check=True, timeout=30)
+        r = subprocess.run(
+            ["docker", "exec", cname, "admin", "import-legacy", "/tmp/dump.sql", "/tmp/hostile.tar", "--force"],
+            capture_output=True, timeout=60)
+        assert r.returncode != 0, "import-legacy must refuse a tar with a path-traversal member"
+        # find by name, not mtime: a crafted tar member can carry any mtime
+        # header it likes (this one happens to default to the epoch), so
+        # "-newer <marker>" is not a reliable escape detector.
+        escaped = subprocess.run(
+            ["docker", "exec", cname, "find", "/", "-xdev", "-name", "row21-hostile-marker"],
+            capture_output=True, timeout=30).stdout.decode().strip()
+        assert escaped == "", f"hostile tar member escaped the extraction dir: {escaped!r}"
 
         # Refuses a second import into a now-non-fresh server (no data loss
         # from an accidental re-run) unless --force.
