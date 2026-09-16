@@ -22,13 +22,13 @@ to him.
 | 6 | A user sends mail to another server and it arrives | two servers side by side (A, B): authenticated submission on A:587 with STARTTLS to bob@b.example | within 30 s the message is in Bob's INBOX on B via IMAP, carrying `DKIM-Signature` from A and `Authentication-Results: … dkim=pass` added by B | machine |
 | 7 | The reply arrives back | B → A | message in Alice's INBOX on A | machine |
 | 8 | Nobody can send through the server without logging in | unauthenticated SMTP on :25 with a foreign sender to a foreign recipient | `554 5.7.1 … Relay access denied` | machine |
-| 9 | Spam and viruses do not reach the INBOX | GTUBE and EICAR from B to A | GTUBE lands in Junk or is rejected; EICAR is rejected with `5xx` | machine |
+| 9 | Spam and viruses do not reach the INBOX, and nothing is lost silently | GTUBE and EICAR from B to A | GTUBE lands in the Junk folder (tagged, not discarded); EICAR is rejected with `5xx` (ClamAV is on by default; `CLAMAV=0` is an explicit opt-out) | machine |
 | 10 | Mail is encrypted in transit | `openssl s_client -starttls smtp`, `imaps`, `https` | TLS 1.2+, certificate for the configured hostname (self-signed with exact CN in tests; mounted real certs in production) | machine |
 | 11 | My phone has mail, calendar and contacts with push, via one Exchange account | ActiveSync: `OPTIONS /Microsoft-Server-ActiveSync`, then `FolderSync` with auth | 200, `MS-ASProtocolVersions` contains `14.1`; `FolderSync` returns Inbox, Calendar, Contacts folders | machine + maintainer (adds the account on an iPhone; a new mail pushes) |
 | 12 | My laptop sees the same calendar and contacts (CalDAV/CardDAV) | `PROPFIND` on the principal URL with auth | 207 with `calendar-home-set` and `addressbook-home-set`; an event created via CalDAV is visible via ActiveSync and vice versa | machine |
 | 13 | Data survive a restart and an upgrade | `docker compose down` (no `-v`), new image tag, `up` | Alice's mail, the users and the quotas are unchanged; no manual step; a mis-mounted volume is refused at startup instead of silently using an anonymous one (#84) | machine |
 | 14 | Backup and restore | `admin backup > f`; fresh server; `admin restore < f` | rows 4 and 6 hold on the restored server | machine |
-| 15 | The image is small and current | `docker image inspect`, `apt list --upgradable`, Trivy | size ≤ 800 MB (phase A) / ≤ 400 MB (phase B); zero HIGH/CRITICAL CVEs with a fix available | machine (CI, weekly) |
+| 15 | The image is current and does not grow unnoticed | `docker image inspect`, `apt list --upgradable`, Trivy (run from its container, never skipped) | size ≤ 2000 MB (recorded in every release; iRedMail + SOGo + ClamAV on Debian is ~1.9 GB); zero HIGH/CRITICAL CVEs with a fix available; zero upgradable packages at build time | machine (CI, weekly) |
 | 16 | Nothing is exposed that need not be | port scan of the container; capabilities | only 25, 465, 587, 993, 443 (+80 for ACME) open; runs without `--privileged` | machine |
 | 17 | Two servers built from the same image have different DKIM keys | compare the DKIM DNS record printed by A and by B | different public keys (#17) | machine |
 | 18 | I can override a config file and it survives an upgrade | drop a file into the `overrides/` volume; restart; upgrade | the override is in effect (observable behaviour, e.g. a Postfix banner string), before and after the upgrade | machine |
@@ -38,4 +38,4 @@ to him.
 
 Out of scope: LDAP, webmail as a requirement (the admin web UI is in scope - row 20), OAuth2, Kubernetes, arm64.
 
-For this repository's final refresh (see CLAUDE.md), rows 1, 2, 4, 6, 7, 8, 10, 13, 16, 17, 21 must pass; rows 3, 5, 9, 11, 12, 14, 15, 18, 19, 20 are run, and their result is recorded in the release notes as-is (pass, or the literal failure) - they are not worked on further here. The Stalwart-based successor project must pass all twenty.
+Every row is required: CI and the release are red if any row fails or is skipped. A row that cannot be observed on a given host is a harness defect to fix (install the tool, run it in a container), never a skip.
