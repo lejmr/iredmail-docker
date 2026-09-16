@@ -5,7 +5,7 @@ Used by ci.yml and release.yml; the table goes into the job summary and the
 release notes. Rows not required are recorded as they are."""
 import collections, re, sys, xml.etree.ElementTree as ET
 
-REQUIRED = {1, 2, 4, 6, 7, 8, 10, 13, 16, 17}
+REQUIRED = {1, 2, 4, 6, 7, 8, 10, 13, 16, 17, 21}
 path = sys.argv[1] if len(sys.argv) > 1 else "test-results/junit.xml"
 rows = collections.OrderedDict()
 for c in ET.parse(path).getroot().iter("testcase"):
