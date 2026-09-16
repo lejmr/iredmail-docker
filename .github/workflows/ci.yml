@@ -34,7 +34,8 @@ jobs:
       - name: shellcheck
         run: |
           sudo apt-get -qq install -y shellcheck >/dev/null
-          shellcheck -S warning image/scripts/* image/build/*.sh bin/*.sh
+          # files only - image/scripts/sieve is a directory
+          find image/scripts image/build bin -maxdepth 1 -type f ! -name '*.py' -print0 | xargs -0 shellcheck -S warning
       - name: hadolint
         uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
         with:
