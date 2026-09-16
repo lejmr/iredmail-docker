@@ -74,11 +74,35 @@ at every start) and `dovecot/*.conf` (included by Dovecot). Details in
 
 Pull the new tag, `docker compose up -d`. Schema migrations run
 automatically on start (the `versions` table in the `vmail` database records
-what was applied). Coming from the **old CentOS 7 image (`mysql-1.3`,
-`Update to 1.6.1`)**: the layout is different - take `mysqldump`s and a copy
-of `/var/vmail` from the old container, start this image fresh, and restore
-with `admin restore` from a tar in the layout `admin backup` produces
-(described in DEVELOPMENT.md). Test on a copy first.
+what was applied).
+
+Coming from the **old `lejmr/iredmail:mysql-1.3*` image** (CentOS 7,
+iRedMail 1.3.x): on the old container, take a full SQL dump and a copy of
+`/var/vmail`:
+
+```
+docker exec old-container mysqldump --all-databases --single-transaction > dump.sql
+docker exec old-container tar -C / -cf - var/vmail > vmail.tar
+```
+
+Start this image fresh (a new, empty server - no domains beyond the one
+`MAIL_DOMAIN` creates), copy both files in, and import:
+
+```
+docker cp dump.sql   new-container:/tmp/dump.sql
+docker cp vmail.tar  new-container:/tmp/vmail.tar
+docker exec new-container admin import-legacy /tmp/dump.sql /tmp/vmail.tar
+```
+
+Every old domain, user, alias, quota and message survives - old passwords
+work unchanged (they are portable Dovecot hashes). **DKIM keys do not
+carry over** - `import-legacy` regenerates one per domain and prints the
+new TXT records; update DNS with them before relying on outbound DKIM.
+`import-legacy` refuses to run again once the server is no longer fresh
+(`--force` overrides), so a repeat by accident cannot double-import.
+ACCEPTANCE.md row 21 is the machine-checked proof, from a fixture taken off
+a real old image - see `test/fixtures/legacy-1.3/MAKE.md`. Test on a copy
+first.
 
 ## What is tested
 
