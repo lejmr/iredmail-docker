@@ -134,3 +134,14 @@ refresh fixed, how to report a finding (privately, please).
 
 [DEVELOPMENT.md](DEVELOPMENT.md): build, run the suite, verify a change,
 release. Pull requests are welcome - one acceptance row per behaviour.
+
+## Reach
+
+[![Docker pulls](https://img.shields.io/docker/pulls/lejmr/iredmail?label=docker%20pulls)](https://hub.docker.com/r/lejmr/iredmail)
+[![latest release](https://img.shields.io/github/v/release/lejmr/iredmail-docker?label=latest%20release)](https://github.com/lejmr/iredmail-docker/releases/latest)
+[![image size](https://img.shields.io/docker/image-size/lejmr/iredmail/latest?label=image%20size)](https://hub.docker.com/r/lejmr/iredmail/tags)
+[![CI](https://img.shields.io/github/actions/workflow/status/lejmr/iredmail-docker/ci.yml?branch=master&label=CI)](https://github.com/lejmr/iredmail-docker/actions/workflows/ci.yml)
+
+Docker Hub counts pulls across every tag since 2017, so the number includes
+the retired CentOS 7 images and every CI pull - read the trend, not the
+absolute value. GHCR publishes no download figures at all.
