@@ -878,3 +878,133 @@ def test_row20_web_ui_add_domain_and_user_machine_part(server_a):
     # it black-box (no reading its source) needs a browser session, which is
     # the maintainer's part per ACCEPTANCE.md row 20. This machine check
     # proves the UI is up and serving over HTTPS.
+
+
+# ------------------------------------------------------------------ row 21 --
+
+FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "legacy-1.3")
+
+# The exact data the fixture (test/fixtures/legacy-1.3/MAKE.md) put on a real
+# lejmr/iredmail:mysql-1.3-latest (iRedMail 1.3.2) container - this test
+# knows these literal values because it is checking they survive the import
+# unchanged, not because it re-derives them from the dump.
+LEGACY_ALICE = ("alice@legacy.example", "AliceOldPass123")
+LEGACY_BOB = ("bob@legacy2.example", "BobOldPass456")
+LEGACY_ALICE_SUBJECTS = {
+    "Legacy message 1 to alice", "Legacy message 2 to alice", "Legacy message 3 to alice",
+}
+LEGACY_BOB_SUBJECT = "Legacy message to bob"
+
+
+def test_row21_import_from_old_image():
+    """I move from the old lejmr/iredmail:mysql-1.3* image to this one
+    without losing anything"""
+    image = os.environ.get("IMAGE", "iredmail/mariadb:stable")
+    if image == "iredmail/mariadb:stable":
+        pytest.skip("import-legacy is this repo's own admin CLI extension, "
+                     "not part of the official-image admin shim contract")
+
+    dump = os.path.join(FIXTURES_DIR, "dump.sql")
+    vmailtar = os.path.join(FIXTURES_DIR, "vmail.tar")
+    assert os.path.isfile(dump) and os.path.isfile(vmailtar), \
+        "test/fixtures/legacy-1.3/{dump.sql,vmail.tar} missing - see MAKE.md"
+
+    cname = "row21-import-target"
+    subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
+    subprocess.run([
+        "docker", "run", "-d", "--name", cname, "--platform", "linux/amd64",
+        "-h", "mail.new.example",
+        "-e", "MAIL_DOMAIN=new.example",
+        "-e", "HOSTNAME_FQDN=mail.new.example",
+        "-e", "POSTMASTER_PASSWORD=Row21PostmasterPw1",
+        "-e", "CLAMAV=0",
+        # anonymous volumes: this image refuses to start on an unmounted
+        # /data/* path (row 13/#84) - a fresh, disposable server needs no
+        # named ones.
+        "-v", "/data/mysql", "-v", "/data/vmail", "-v", "/data/certs",
+        "-v", "/data/overrides", "-v", "/data/secrets",
+        "-p", "50025:25", "-p", "50587:587", "-p", "50993:993", "-p", "50443:443",
+        "--cap-drop", "ALL",
+        "--cap-add", "NET_BIND_SERVICE", "--cap-add", "CHOWN", "--cap-add", "SETUID",
+        "--cap-add", "SETGID", "--cap-add", "DAC_OVERRIDE", "--cap-add", "FOWNER",
+        "--cap-add", "SYS_CHROOT", "--cap-add", "KILL",
+        image,
+    ], check=True, timeout=60)
+    try:
+        # This image's own HEALTHCHECK (docker inspect), not
+        # _wait_docker_healthy_port's internal-bridge-IP probe (used by row
+        # 14's restore-target container): this container is not on that
+        # container's dedicated network, and the internal IP is not
+        # reliably routable from the host in every Docker setup this suite
+        # runs under - the published port + health status is.
+        deadline = time.monotonic() + 600
+        healthy = False
+        while time.monotonic() < deadline:
+            r = subprocess.run(["docker", "inspect", "-f", "{{.State.Health.Status}}", cname],
+                                capture_output=True, timeout=10)
+            if r.stdout.decode().strip() == "healthy":
+                healthy = True
+                break
+            time.sleep(3)
+        assert healthy, f"{cname} did not become healthy within 600s"
+
+        subprocess.run(["docker", "cp", dump, f"{cname}:/tmp/dump.sql"], check=True, timeout=60)
+        subprocess.run(["docker", "cp", vmailtar, f"{cname}:/tmp/vmail.tar"], check=True, timeout=60)
+        r = subprocess.run(
+            ["docker", "exec", cname, "admin", "import-legacy", "/tmp/dump.sql", "/tmp/vmail.tar"],
+            capture_output=True, timeout=180)
+        assert r.returncode == 0, f"admin import-legacy failed: {r.stdout.decode(errors='replace')} {r.stderr.decode(errors='replace')}"
+
+        domains = subprocess.run(["docker", "exec", cname, "admin", "domain", "list"],
+                                  capture_output=True, check=True, timeout=30).stdout.decode()
+        assert "legacy.example" in domains
+        assert "legacy2.example" in domains
+
+        users = subprocess.run(["docker", "exec", cname, "admin", "user", "list"],
+                                capture_output=True, check=True, timeout=30).stdout.decode()
+        assert LEGACY_ALICE[0] in users
+        assert LEGACY_BOB[0] in users
+
+        quota_out = subprocess.run(
+            ["docker", "exec", cname, "bash", "-c",
+             "mysql -uroot -p\"$(cat /data/secrets/mysql_root.pw)\" vmail -N -e "
+             f"\"SELECT quota FROM mailbox WHERE username='{LEGACY_ALICE[0]}';\""],
+            capture_output=True, check=True, timeout=30).stdout.decode().strip()
+        assert quota_out == "512", f"alice's quota changed on import: {quota_out!r}"
+
+        ctx = _insecure_ctx()
+        conn = imaplib.IMAP4_SSL("127.0.0.1", 50993, ssl_context=ctx)
+        conn.login(*LEGACY_ALICE)
+        conn.select("INBOX")
+        typ, data = conn.search(None, "ALL")
+        uids = data[0].split()
+        assert len(uids) == 3, f"alice should have 3 messages, has {len(uids)}"
+        subjects = set()
+        for uid in uids:
+            typ, d = conn.fetch(uid, "(BODY[HEADER.FIELDS (SUBJECT)])")
+            subjects.add(d[0][1].decode().split(":", 1)[1].strip())
+        assert subjects == LEGACY_ALICE_SUBJECTS
+        conn.logout()
+
+        conn = imaplib.IMAP4_SSL("127.0.0.1", 50993, ssl_context=ctx)
+        conn.login(*LEGACY_BOB)
+        conn.select("INBOX")
+        typ, data = conn.search(None, "ALL")
+        uids = data[0].split()
+        assert len(uids) == 1, f"bob should have 1 message, has {len(uids)}"
+        typ, d = conn.fetch(uids[0], "(BODY[HEADER.FIELDS (SUBJECT)])")
+        assert d[0][1].decode().split(":", 1)[1].strip() == LEGACY_BOB_SUBJECT
+        conn.logout()
+
+        dkim_out = subprocess.run(["docker", "exec", cname, "admin", "dkim", "legacy.example"],
+                                   capture_output=True, check=True, timeout=30).stdout.decode()
+        assert "IN TXT" in dkim_out and "v=DKIM1" in dkim_out
+
+        # Refuses a second import into a now-non-fresh server (no data loss
+        # from an accidental re-run) unless --force.
+        r = subprocess.run(
+            ["docker", "exec", cname, "admin", "import-legacy", "/tmp/dump.sql", "/tmp/vmail.tar"],
+            capture_output=True, timeout=60)
+        assert r.returncode != 0
+    finally:
+        subprocess.run(["docker", "rm", "-f", cname], capture_output=True)
