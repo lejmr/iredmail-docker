@@ -47,19 +47,26 @@ jobs:
             [ -n "$prs" ] && { report "- pull requests open: #${prs// / #}"; attention=1; } || report "- pull requests open: none"
 
             # Default-branch CI.
+            # A run still in flight has an empty conclusion - that is not a
+            # failure, so fall back to its status and let it pass.
             ci=$(gh run list -R "$repo" --branch master --limit 10 \
               --json workflowName,status,conclusion,createdAt,url \
-              --jq '[.[] | select(.workflowName == "CI")][0] | "\(.conclusion // .status) \(.createdAt[0:10]) \(.url)"')
+              --jq '[.[] | select(.workflowName == "CI")][0] | "\(if (.conclusion // "") == "" then .status else .conclusion end) \(.createdAt[0:10]) \(.url)"')
             report "- CI on master: ${ci:-never run}"
-            case "$ci" in success*|"") ;; *) attention=1 ;; esac
+            case "$ci" in success*|in_progress*|queued*|requested*|waiting*|pending*|"") ;; *) attention=1 ;; esac
 
             # Scheduled workflows GitHub turned off, and whether the weekly
             # runs are actually happening.
             off=$(gh workflow list -R "$repo" --json name,state --jq '[.[] | select(.state != "active") | .name] | join(", ")')
             [ -n "$off" ] && { report "- workflows disabled: $off"; attention=1; }
+            head=$(gh api "repos/$repo/commits/master" --jq '.commit.committer.date[0:10]')
+            head_age=$(( ( $(date +%s) - $(date -d "$head" +%s) ) / 86400 ))
             last=$(gh run list -R "$repo" --event schedule --limit 1 --json createdAt --jq '.[0].createdAt[0:10] // ""')
             if [ -z "$last" ]; then
+              # A repository set up days ago has simply not reached its first
+              # scheduled run yet; only an established one owes us a run.
               report "- scheduled runs: never"
+              [ "$head_age" -gt 10 ] && attention=1
             else
               age=$(( ( $(date +%s) - $(date -d "$last" +%s) ) / 86400 ))
               report "- last scheduled run: $last (${age}d ago)"
@@ -68,7 +75,6 @@ jobs:
 
             # Released code versus what is on master.
             rel=$(gh release list -R "$repo" --limit 1 --json tagName,publishedAt --jq '.[0] | "\(.tagName) (\(.publishedAt[0:10]))"')
-            head=$(gh api "repos/$repo/commits/master" --jq '.commit.committer.date[0:10]')
             report "- latest release: ${rel:-none} | master: $head"
             report ""
           done
