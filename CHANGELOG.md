@@ -3,7 +3,7 @@
 Written for people running the image. The technical detail is in the pull
 requests linked from each release on GitHub.
 
-## [Unreleased]
+## [1.8.8]
 
 The last feature release of this image. **For new deployments the
 maintainer recommends [Stalwart](https://stalw.art) instead** - see the

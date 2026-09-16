@@ -236,12 +236,13 @@ code; a test is mutation-checked (break the behaviour, watch it fail).
 
 ## Releasing
 
-**Actions → Release → Run workflow** (blank version = today). The workflow
-refuses if the date was already released or `CHANGELOG.md` has no
-`## [YYYY-MM-DD]` section; then it builds on GitHub's amd64 runners, runs
+**Actions → Release → Run workflow** (blank version = the Dockerfile's
+`IREDMAIL_VERSION`, e.g. `1.8.8`; `1.8.8-2` for a rebuild of the same
+iRedMail). The workflow refuses if the version was already released, does
+not match the Dockerfile, or `CHANGELOG.md` has no `## [<version>]` section; then it builds on GitHub's amd64 runners, runs
 the suite from a fresh compose up, requires the rows marked required in
 `ACCEPTANCE.md` to pass, tags the commit, pushes the tested image to
-`ghcr.io/lejmr/iredmail-docker` and `lejmr/iredmail` as `<date>` and
+`ghcr.io/lejmr/iredmail-docker` and `lejmr/iredmail` as `<version>` and
 `latest`, and publishes a GitHub release whose notes are the changelog
 section plus the literal per-row result. Docker Hub needs the repository
 secrets `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`; GHCR works with the

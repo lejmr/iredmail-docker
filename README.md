@@ -21,7 +21,7 @@ rejected outright (a live SMTP 5xx to the sender), never silently dropped.
 ```yaml
 services:
   mail:
-    image: ghcr.io/lejmr/iredmail-docker:latest   # or a dated tag - see Releases
+    image: ghcr.io/lejmr/iredmail-docker:latest   # or a version tag such as 1.8.8 - see Releases
     hostname: mail.example.org
     environment:
       MAIL_DOMAIN: example.org
