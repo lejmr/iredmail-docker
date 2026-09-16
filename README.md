@@ -19,7 +19,7 @@ iRedAdmin, SOGo (ActiveSync, CalDAV/CardDAV), nginx - in one image on
 ```yaml
 services:
   mail:
-    image: ghcr.io/lejmr/iredmail-docker:latest   # or a dated tag - see Releases
+    image: ghcr.io/lejmr/iredmail-docker:latest   # or a version tag such as 1.8.8 - see Releases
     hostname: mail.example.org
     environment:
       MAIL_DOMAIN: example.org

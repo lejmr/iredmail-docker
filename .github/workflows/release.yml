@@ -3,7 +3,7 @@ name: Release
 # One button: Actions -> Release -> Run workflow (works from a phone).
 # Builds the image on GitHub's amd64 runners, proves the acceptance rows
 # from a fresh compose up, and only then tags the commit, pushes the image
-# to GHCR and Docker Hub as <date> and latest, and publishes a GitHub
+# to GHCR and Docker Hub as <version> (the iRedMail version, e.g. 1.8.8) and latest, and publishes a GitHub
 # release whose notes are this version's CHANGELOG.md section plus the
 # literal per-row result of the suite. It refuses before touching anything
 # if the version was already released or has no changelog section.
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release date (YYYY-MM-DD). Leave blank to use today."
+        description: "Version to release, e.g. 1.8.8 (the iRedMail version, from image/Dockerfile) or 1.8.8-2 for a rebuild of the same iRedMail. Leave blank to use the Dockerfile's IREDMAIL_VERSION."
         required: false
 
 permissions:
@@ -30,12 +30,16 @@ jobs:
         id: version
         run: |
           ver="${{ inputs.version }}"
-          [ -n "$ver" ] || ver=$(date +%F)
+          dockerfile_ver=$(sed -n 's/^ARG IREDMAIL_VERSION=//p' image/Dockerfile)
+          [ -n "$ver" ] || ver="$dockerfile_ver"
           case "$ver" in
-            [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
-            *) echo "::error::'$ver' is not a YYYY-MM-DD date"; exit 1 ;;
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::'$ver' is not a version like 1.8.8 or 1.8.8-2"; exit 1 ;;
           esac
-          [ "$ver" = "$(date +%F)" ] || { echo "::error::use today's date ($(date +%F)), or leave the input blank"; exit 1; }
+          case "$ver" in
+            "$dockerfile_ver"|"$dockerfile_ver"-*) ;;
+            *) echo "::error::'$ver' does not match image/Dockerfile's IREDMAIL_VERSION=$dockerfile_ver"; exit 1 ;;
+          esac
           echo "version=$ver" >> "$GITHUB_OUTPUT"
 
       - name: refuse to re-release a version that already shipped
