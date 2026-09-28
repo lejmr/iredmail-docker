@@ -3,6 +3,14 @@
 Written for people running the image. The technical detail is in the pull
 requests linked from each release on GitHub.
 
+## [Unreleased]
+
+### Fixed
+
+- The weekly rebuild really picks up Debian security updates again: the
+  build cache had kept the package-upgrade step from the first build, so
+  e.g. PHP 8.4 stayed at a version with a known fix available.
+
 ## [1.8.8]
 
 The last feature release of this image. **For new deployments the
