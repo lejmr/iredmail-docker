@@ -248,6 +248,18 @@ section plus the literal per-row result. Docker Hub needs the repository
 secrets `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN`; GHCR works with the
 built-in token.
 
+Every published build also gets an immutable `<version>-<YYYYMMDD>` tag.
+
+**Security refresh, same tag** (`refresh.yml`): weekly for the latest
+release, or **Actions → Refresh → Run workflow** for any release (blank =
+latest; `force` pushes even when nothing changed). It checks out the
+release's git tag, builds it with no layer cache on a freshly pulled base,
+compares the installed packages with the image published under that tag,
+and when they differ runs that release's own suite and pushes the tested
+image as `<version>`, `<version>-<YYYYMMDD>` and, for the latest release,
+`latest`. Users keep their tag and just pull. Anything that changes the
+image's own code is a new release (`1.8.8-2`), never a refresh.
+
 CI (`ci.yml`) runs static checks, the build, Trivy (recorded) and the
 suite on every pull request and push to master, and **weekly** - a base
 image security update or a vanished upstream repository shows up as a red

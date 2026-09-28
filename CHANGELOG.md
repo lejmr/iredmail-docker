@@ -11,6 +11,13 @@ requests linked from each release on GitHub.
   build cache had kept the package-upgrade step from the first build, so
   e.g. PHP 8.4 stayed at a version with a known fix available.
 
+### Added
+
+- Security refreshes under the same tag: `1.8.8` (and `latest`) is rebuilt
+  with current packages, tested, and re-published, so a `docker pull` brings
+  the security updates without changing tags. Each build also gets an
+  immutable `1.8.8-<YYYYMMDD>` tag for pinning.
+
 ## [1.8.8]
 
 The last feature release of this image. **For new deployments the
