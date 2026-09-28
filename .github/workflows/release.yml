@@ -114,11 +114,15 @@ jobs:
         id: tags
         run: |
           v="${{ steps.version.outputs.version }}"
+          # <v>-<date> is immutable; <v> and latest move with refresh.yml
+          d=$(date -u +%Y%m%d)
           tags="ghcr.io/${{ github.repository }}:$v
+          ghcr.io/${{ github.repository }}:$v-$d
           ghcr.io/${{ github.repository }}:latest"
           if [ "${{ steps.dh.outputs.configured }}" = "true" ]; then
             tags="$tags
           lejmr/iredmail:$v
+          lejmr/iredmail:$v-$d
           lejmr/iredmail:latest"
           else
             echo "Docker Hub secrets not set - published to GHCR only" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -147,6 +151,8 @@ jobs:
             else
               echo "Image: [\`ghcr.io/${{ github.repository }}:$v\`](https://github.com/${{ github.repository }}/pkgs/container/iredmail-docker) on GHCR"
             fi
+            echo
+            echo "The \`$v\` tag is refreshed with security updates of the packages inside (Refresh workflow, weekly for the latest release) - pull it again to get them; \`$v-<YYYYMMDD>\` tags never change."
           } > release-body.md
 
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3

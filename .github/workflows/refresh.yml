@@ -1,0 +1,145 @@
+name: Refresh
+
+# Security refresh of an already released image, under the SAME tag: people
+# running `:1.8.8` get Debian's security updates by pulling again, without
+# changing the tag they run. Weekly for the latest release (after CI's own
+# weekly run), or by hand for any release: Actions -> Refresh -> Run
+# workflow.
+#
+# Builds the release's own source (its git tag) from nothing with current
+# packages, and pushes only when the package set differs from the image
+# already published, and only after that release's acceptance suite passes
+# on the rebuilt image. It pushes `<version>`, an immutable
+# `<version>-<YYYYMMDD>`, and `latest` when the version is the latest release.
+# A change to the image's own code is a new release (1.8.8-2), never a
+# refresh.
+on:
+  schedule:
+    - cron: '23 7 * * 1'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released version to refresh, e.g. 1.8.8. Leave blank for the latest release."
+        required: false
+      force:
+        description: "Push even when no package changed"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: which release
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANTED: ${{ inputs.version }}
+        run: |
+          latest=$(gh release view -R "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          ver="${WANTED:-$latest}"
+          gh release view "$ver" -R "$GITHUB_REPOSITORY" --json tagName >/dev/null \
+            || { echo "::error::'$ver' is not a published release"; exit 1; }
+          {
+            echo "version=$ver"
+            echo "is-latest=$([ "$ver" = "$latest" ] && echo true || echo false)"
+            echo "stamp=$(date -u +%Y%m%d)"
+          } >> "$GITHUB_OUTPUT"
+          echo "Refreshing release $ver (latest release: $latest)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # the release's own image source and its own acceptance suite
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: refs/tags/${{ steps.rel.outputs.version }}
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      # no layer cache and a fresh base image: the point is current packages
+      - name: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: image
+          tags: iredmail-phase-a:dev
+          load: true
+          pull: true
+          no-cache: true
+
+      - name: log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: packages changed since the published image
+        id: diff
+        env:
+          PUBLISHED: ghcr.io/${{ github.repository }}:${{ steps.rel.outputs.version }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          pkgs() { docker run --rm --entrypoint dpkg-query "$1" -W -f '${Package} ${Version}\n' | sort; }
+          pkgs iredmail-phase-a:dev > new.txt
+          if docker pull -q "$PUBLISHED" >/dev/null; then pkgs "$PUBLISHED" > old.txt; else : > old.txt; fi
+          if diff -u old.txt new.txt > changes.txt; then changed=false; else changed=true; fi
+          {
+            echo "### Package changes against \`$PUBLISHED\`"
+            if [ "$changed" = true ]; then
+              echo '```diff'; grep '^[-+][^-+]' changes.txt; echo '```'
+            else
+              echo "none"
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$FORCE" = true ] && changed=true
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: acceptance suite from a fresh compose up
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          set -o pipefail
+          IMAGE=iredmail-phase-a:dev IMAGE_NEXT=iredmail-phase-a:dev bin/test.sh || true
+          python3 bin/required-rows.py test-results/junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Docker Hub is optional, as in release.yml
+      - name: is Docker Hub configured
+        id: dh
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          U: ${{ secrets.DOCKERHUB_USERNAME }}
+          T: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$U" ] && [ -n "$T" ]; then echo "configured=true" >> "$GITHUB_OUTPUT"; else echo "configured=false" >> "$GITHUB_OUTPUT"; fi
+      - name: log in to Docker Hub
+        if: steps.dh.outputs.configured == 'true'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # the exact image the suite just tested - pushed, not rebuilt
+      - name: push the tested image
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          V: ${{ steps.rel.outputs.version }}
+          STAMP: ${{ steps.rel.outputs.stamp }}
+          IS_LATEST: ${{ steps.rel.outputs.is-latest }}
+          DOCKERHUB: ${{ steps.dh.outputs.configured }}
+        run: |
+          repos="ghcr.io/$GITHUB_REPOSITORY"
+          [ "$DOCKERHUB" = true ] && repos="$repos lejmr/iredmail"
+          tags="$V $V-$STAMP"
+          [ "$IS_LATEST" = true ] && tags="$tags latest"
+          for r in $repos; do
+            for t in $tags; do
+              docker tag iredmail-phase-a:dev "$r:$t"
+              docker push -q "$r:$t"
+              echo "pushed $r:$t" | tee -a "$GITHUB_STEP_SUMMARY"
+            done
+          done

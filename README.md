@@ -74,7 +74,11 @@ at every start) and `dovecot/*.conf` (included by Dovecot). Details in
 
 ## Upgrade
 
-Pull the new tag, `docker compose up -d`. Schema migrations run
+Pull the new tag, `docker compose up -d`. A version tag such as `1.8.8`
+(and `latest`) is rebuilt with the security updates of the packages inside
+and re-published under the same name, so pulling it again and
+`docker compose up -d` is all a security update takes; `1.8.8-20260928`-style
+tags never change, if you prefer to pin. Schema migrations run
 automatically on start (the `versions` table in the `vmail` database records
 what was applied).
 
