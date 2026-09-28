@@ -43,8 +43,14 @@ RUN set -eux; \
 # by Trivy on an image built without this: two HIGH CVEs with a fix already
 # published (gzip CVE-2026-41992, libsqlite3-0 CVE-2026-11822/-11824) on
 # packages nothing here ever re-installs.
+# APT_REFRESH (CI passes the UTC date) changes this step's cache key: with
+# the GitHub Actions layer cache the upgrade layer was otherwise reused
+# as-is, and the weekly rebuild shipped nothing new (php8.4 8.4.24 kept
+# past its security fix, 2026-09-28).
+ARG APT_REFRESH=
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    echo "apt refresh: ${APT_REFRESH:-local}" && \
     apt-get update && apt-get upgrade -y
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
