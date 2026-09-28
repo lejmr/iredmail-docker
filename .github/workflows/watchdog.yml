@@ -55,6 +55,18 @@ jobs:
             report "- CI on master: ${ci:-never run}"
             case "$ci" in success*|in_progress*|queued*|requested*|waiting*|pending*|"") ;; *) attention=1 ;; esac
 
+            # Security refresh of the released image (refresh.yml, Monday,
+            # three days before this job): a red run means users are not
+            # getting updates. In flight is not a failure; a repository
+            # without the workflow (the sibling) reports nothing.
+            refresh=$(gh run list -R "$repo" --workflow refresh.yml --limit 1 \
+              --json status,conclusion,createdAt,url \
+              --jq '.[0] // empty | "\(if (.conclusion // "") == "" then .status else .conclusion end) \(.createdAt[0:10]) \(.url)"' 2>/dev/null || true)
+            if [ -n "$refresh" ]; then
+              report "- image refresh: $refresh"
+              case "$refresh" in success*|in_progress*|queued*|requested*|waiting*|pending*) ;; *) attention=1 ;; esac
+            fi
+
             # Scheduled workflows GitHub turned off, and whether the weekly
             # runs are actually happening.
             off=$(gh workflow list -R "$repo" --json name,state --jq '[.[] | select(.state != "active") | .name] | join(", ")')
