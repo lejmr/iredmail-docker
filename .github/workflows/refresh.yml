@@ -107,6 +107,19 @@ jobs:
           IMAGE=iredmail-phase-a:dev IMAGE_NEXT=iredmail-phase-a:dev bin/test.sh || true
           python3 bin/required-rows.py test-results/junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # The release's own bin/test.sh decides what is written here, so
+      # compose.log exists only for releases whose test.sh saves it.
+      - name: test report and container logs
+        if: always() && steps.diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: acceptance-logs
+          path: |
+            test-results/junit.xml
+            test-results/compose.log
+          if-no-files-found: ignore
+          retention-days: 14
+
       # Docker Hub is optional, as in release.yml
       - name: is Docker Hub configured
         id: dh

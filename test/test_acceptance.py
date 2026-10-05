@@ -250,17 +250,27 @@ def test_row04_restart_does_not_change_password(server_a, fresh_user):
     conn.logout()
 
 
-def _retry_imap_login(server, mail, password, attempts=8, delay=5):
-    """The port accepts TCP before dovecot's TLS listener is fully ready
-    right after a restart; retry the handshake, not just the TCP connect."""
+def _retry_imap_login(server, mail, password, timeout=300, delay=5):
+    """Log in once the server is really back, not merely listening.
+
+    Right after a restart the IMAPS port accepts TCP, then TLS, before the
+    server can authenticate anyone: dovecot answers `[UNAVAILABLE] Temporary
+    authentication failure` until its user database is usable. A login that
+    succeeds is the only readiness signal a user would see, so wait for that,
+    for as long as a slow runner may need, and say how long it waited when
+    it never comes."""
+    deadline = time.monotonic() + timeout
     last_exc = None
-    for _ in range(attempts):
+    while True:
         try:
             return imap_login(server, mail, password)
         except (ssl.SSLError, OSError, imaplib.IMAP4.error) as exc:
             last_exc = exc
-            time.sleep(delay)
-    raise last_exc
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"no IMAP login for {mail} within {timeout}s of the port opening; "
+                f"last error: {last_exc!r}") from last_exc
+        time.sleep(delay)
 
 
 def _wait_port(host, port, timeout):
@@ -621,8 +631,8 @@ def test_row13_restart_and_upgrade_preserve_data(server_a, fresh_user):
     _wait_port(server_a.host, server_a.ports["imaps"], 300)
 
     # Same race as row 4's restart case: the port accepts TCP before
-    # dovecot's TLS listener is fully up - retry the handshake, not just
-    # the connect (_wait_port only proves the latter).
+    # dovecot can authenticate anyone - wait for a login, not just the
+    # connect (_wait_port only proves the latter).
     conn = _retry_imap_login(server_a, mail, password)
     assert wait_for_message(conn, subject, timeout=30), "mail lost across upgrade"
     conn.logout()

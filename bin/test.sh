@@ -19,7 +19,17 @@ fi
 RESULTS_DIR="${HERE}/test-results"
 mkdir -p "${RESULTS_DIR}"
 
+# `down -v` below removes the containers, and with them the only record of
+# why a service did not come up. Keep their logs next to junit.xml first -
+# UTC timestamps, so they line up with the runner's own log. For people to
+# read; no test asserts on them (row 1's "no error at startup" reads its own).
+save_logs() {
+    docker compose "${COMPOSE_ARGS[@]}" logs --no-color --timestamps \
+        > "${RESULTS_DIR}/compose.log" 2>&1 || true
+}
+
 cleanup() {
+    save_logs
     docker compose "${COMPOSE_ARGS[@]}" down -v --remove-orphans
 }
 trap cleanup EXIT

@@ -101,3 +101,14 @@ jobs:
           name: acceptance-junit
           path: test-results/junit.xml
           if-no-files-found: ignore
+      # what the servers logged during the run (bin/test.sh saves it before
+      # the containers are removed): the record of a service that did not
+      # come up in time
+      - name: container logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: acceptance-logs
+          path: test-results/compose.log
+          if-no-files-found: ignore
+          retention-days: 14

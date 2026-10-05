@@ -69,8 +69,16 @@ for `a.example` and `b.example` (A, MX, and the DKIM TXT records, which
 the suite reads with `admin dkim` after the servers are healthy and loads
 into the zone) - so row 6's `dkim=pass` is real, not simulated.
 
-`test/junit.xml` is written on every run; the release workflow turns it
-into the per-row table in the release notes.
+`test-results/junit.xml` is written on every run; the release workflow turns
+it into the per-row table in the release notes. Next to it `bin/test.sh`
+saves `test-results/compose.log` - what both servers logged, with UTC
+timestamps - before it removes the containers, because that is the only
+record of a service that was slow or failed to come up. CI and Refresh
+upload it as the `acceptance-logs` artifact (14 days).
+
+After a restart the suite waits for a successful IMAP login, not for the
+port: dovecot listens on 993 before it can authenticate anyone and answers
+`Temporary authentication failure` until it can (up to 300 s).
 
 Row 21 (import from the old `lejmr/iredmail:mysql-1.3*` image) uses a
 fixture checked into `test/fixtures/legacy-1.3/` (`dump.sql`, `vmail.tar`) -
