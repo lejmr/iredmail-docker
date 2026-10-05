@@ -94,6 +94,18 @@ jobs:
         run: |
           set -o pipefail
           python3 bin/required-rows.py test-results/junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
+      # On a red run, print what the servers logged: the job log is readable
+      # without downloading the artifact below (bin/test.sh writes the file;
+      # compose prefixes every line with the service name, so no line can
+      # start with `::` and be taken for a workflow command).
+      - name: container logs of a failed run
+        if: failure()
+        run: |
+          if [ -f test-results/compose.log ]; then
+            echo "::group::compose.log ($(wc -l < test-results/compose.log) lines)"
+            cat test-results/compose.log
+            echo "::endgroup::"
+          fi
       - name: test report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

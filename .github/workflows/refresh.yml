@@ -107,6 +107,15 @@ jobs:
           IMAGE=iredmail-phase-a:dev IMAGE_NEXT=iredmail-phase-a:dev bin/test.sh || true
           python3 bin/required-rows.py test-results/junit.xml | tee -a "$GITHUB_STEP_SUMMARY"
 
+      - name: container logs of a failed run
+        if: failure() && steps.diff.outputs.changed == 'true'
+        run: |
+          if [ -f test-results/compose.log ]; then
+            echo "::group::compose.log ($(wc -l < test-results/compose.log) lines)"
+            cat test-results/compose.log
+            echo "::endgroup::"
+          fi
+
       # The release's own bin/test.sh decides what is written here, so
       # compose.log exists only for releases whose test.sh saves it.
       - name: test report and container logs
