@@ -250,20 +250,26 @@ def test_row04_restart_does_not_change_password(server_a, fresh_user):
     conn.logout()
 
 
-def test_row04_repeated_restarts_keep_login_working(server_a, fresh_user):
-    """Logging in keeps working after each of several restarts in a row"""
+def test_row04_repeated_restarts_keep_login_and_sending_working(server_a, fresh_user):
+    """Logging in and sending mail keep working after each of several restarts in a row"""
     mail, password = fresh_user(server_a, "row04restarts", quota="1G")
+    admin_mail, admin_pw = domain_admin_cred(server_a)
 
-    # One restart hits the startup race between the database and the IMAP
-    # server only sometimes; in the run that found it, an unfixed image got
-    # stuck (logins refused for many minutes) on the 2nd restart.
-    for _ in range(3):
+    # One restart hits each startup race only sometimes: the IMAP server
+    # against the database (an unfixed image got stuck, logins refused for
+    # many minutes, on the 2nd restart) and the spam/virus filter against
+    # the PID file left by the previous run (it refused to start on the 8th
+    # restart, and submission then answered 451).
+    for i in range(3):
         subprocess.run(["docker", "compose", "-f", COMPOSE_FILE, "restart", server_a.compose_service],
                         check=True, timeout=300)
         _wait_port(server_a.host, server_a.ports["imaps"], 180)
 
         conn = _retry_imap_login(server_a, mail, password)
         conn.logout()
+
+        smtp_send(server_a, admin_mail, mail, f"row04restarts-{i}-{time.time()}",
+                  auth=(admin_mail, admin_pw))
 
 
 def _retry_imap_login(server, mail, password, attempts=8, delay=5):
