@@ -250,6 +250,22 @@ def test_row04_restart_does_not_change_password(server_a, fresh_user):
     conn.logout()
 
 
+def test_row04_repeated_restarts_keep_login_working(server_a, fresh_user):
+    """Logging in keeps working after each of several restarts in a row"""
+    mail, password = fresh_user(server_a, "row04restarts", quota="1G")
+
+    # One restart hits the startup race between the database and the IMAP
+    # server only sometimes; in the run that found it, an unfixed image got
+    # stuck (logins refused for many minutes) on the 2nd restart.
+    for _ in range(3):
+        subprocess.run(["docker", "compose", "-f", COMPOSE_FILE, "restart", server_a.compose_service],
+                        check=True, timeout=300)
+        _wait_port(server_a.host, server_a.ports["imaps"], 180)
+
+        conn = _retry_imap_login(server_a, mail, password)
+        conn.logout()
+
+
 def _retry_imap_login(server, mail, password, attempts=8, delay=5):
     """The port accepts TCP before dovecot's TLS listener is fully ready
     right after a restart; retry the handshake, not just the TCP connect."""

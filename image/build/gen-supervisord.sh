@@ -74,6 +74,31 @@ for svc in $SERVICES; do
         # folders and CalDAV/CardDAV need it, ActiveSync's own folders too.
         execstart="/bin/sh -c 'for i in \$(seq 1 60); do mysqladmin ping -h 127.0.0.1 --silent 2>/dev/null && break; sleep 1; done; exec /usr/sbin/sogod -WONoDetach YES -WOWorkersCount 2 -WOPidFile /var/run/sogo/sogo.pid -WOLogFile /var/log/sogo/sogo.log'"
         user=sogo
+    elif [ "$svc" = "dovecot" ]; then
+        # Same startup race as sogod above, with a worse outcome: supervisord
+        # starts dovecot and mariadbd together, and dovecot's auth worker
+        # tries its SQL connection (127.0.0.1:3306) before MariaDB listens.
+        # Since Debian's dovecot 1:2.4.1+dfsg1-6+deb13u7 (DSA-6526-1,
+        # 2026-09-28; patch passdb_sql-connect-before-expanding-query-
+        # variables) a passdb lookup no longer waits for that connection - it
+        # fails at once ("Not connected to database") and a reconnect is
+        # tried only when the next login arrives, with the delay multiplied
+        # by 5 after every failure (1, 5, 25, 125, 625 s, capped at 1800 s,
+        # SQL_CONNECT_MAX_DELAY in dovecot's lib-sql). Result: after a
+        # container restart every IMAP/SMTP/ActiveSync login is refused with
+        # "Temporary authentication failure" for minutes, up to 30. Before
+        # deb13u7 the lookup waited and recovered within a minute, so the
+        # race was invisible.
+        #
+        # Wait for MariaDB, then exec dovecot exactly as dovecot.service
+        # does (`dovecot -F`). Unlike sogo there is deliberately NO cap on
+        # the loop: starting dovecot anyway after N seconds would land in the
+        # backoff above whenever MariaDB needs longer (InnoDB crash recovery
+        # after an unclean stop can), whereas a dovecot that never starts
+        # leaves 993 closed, the healthcheck turns unhealthy and the failure
+        # is visible instead of a silent lockout. This only orders startup: a
+        # MariaDB that supervisord restarts at runtime is not covered.
+        execstart="/bin/sh -c 'until mysqladmin ping -h 127.0.0.1 --silent 2>/dev/null; do sleep 1; done; exec /usr/sbin/dovecot -F'"
     elif [ "$svc" = "iredapd" ]; then
         # ponytail: iredapd.py self-daemonizes (libs/daemon.py double-fork)
         # unless --foreground is on argv - same detach-then-orphan failure
