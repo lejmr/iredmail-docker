@@ -3,7 +3,11 @@
 Written for people running the image. The technical detail is in the pull
 requests linked from each release on GitHub.
 
-## [Unreleased]
+## [1.8.8-2]
+
+Same iRedMail 1.8.8, rebuilt with fixes for restarts. If you run `:1.8.8`,
+switch to `:1.8.8-2` (or `latest`): the weekly security refresh only
+rebuilds the latest release.
 
 ### Fixed
 
@@ -20,10 +24,11 @@ requests linked from each release on GitHub.
 
 ### Added
 
-- Security refreshes under the same tag: `1.8.8` (and `latest`) is rebuilt
-  with current packages, tested, and re-published, so a `docker pull` brings
-  the security updates without changing tags. Each build also gets an
-  immutable `1.8.8-<YYYYMMDD>` tag for pinning.
+- Security refreshes under the same tag: the latest release (now `1.8.8-2`,
+  and `latest`) is rebuilt weekly with current packages, tested, and
+  re-published, so a `docker pull` brings the security updates without
+  changing tags. Each build also gets an immutable `<version>-<YYYYMMDD>`
+  tag (e.g. `1.8.8-2-20261012`) for pinning.
 
 ## [1.8.8]
 
