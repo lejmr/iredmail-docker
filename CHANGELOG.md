@@ -7,6 +7,13 @@ requests linked from each release on GitHub.
 
 ### Fixed
 
+- After a restart of the container, logins (IMAP, SMTP, ActiveSync) could be
+  refused with "temporary authentication failure" for minutes, up to half an
+  hour, since the Debian Dovecot security update of 28 September 2026. The
+  mail server now waits for its database before accepting logins.
+- After a restart of the container, sending mail from a mail client could be
+  refused with "451 queue file write error" until the next restart, because
+  the virus and spam filter refused to start. It now starts reliably.
 - The weekly rebuild really picks up Debian security updates again: the
   build cache had kept the package-upgrade step from the first build, so
   e.g. PHP 8.4 stayed at a version with a known fix available.

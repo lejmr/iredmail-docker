@@ -65,4 +65,15 @@ fi
 # setgid bits, unrelated to this path) but never fails.
 postfix check || true
 
+# `docker restart` keeps the container's filesystem, so /run (= /var/run)
+# still holds the PID files of the previous run. PIDs start from low numbers
+# again and are reused, so a leftover amavisd.pid often names a process of
+# another user; amavis then dies on "Can't send SIG 0 to process [N]:
+# Operation not permitted", supervisord gives up after its retries
+# ("amavis entered FATAL state") and every submission/smtps message is
+# refused with "451 4.3.0 Error: queue file write error" until the next
+# restart. Deleting all of them is safe: this is PID 1 and runs before
+# supervisord starts any daemon, so every PID file here is stale.
+find /run -name '*.pid' -type f -delete
+
 exec "$@"
