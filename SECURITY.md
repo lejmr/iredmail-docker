@@ -18,6 +18,22 @@ add holes of its own: how secrets are generated and stored, which services
 are reachable from the network, which privileges the container needs, what
 happens on restart, upgrade, backup and restore.
 
+## Upstream package advisories
+
+Critical fixes in Debian packages land through the weekly security refresh
+of the latest release tag (`1.8.8-2` / `latest`), not a new iRedMail
+feature release. Acceptance row 15 fails the build when a fixable
+HIGH/CRITICAL CVE remains. `docker pull` of that tag is the user action.
+
+- **PHP request-parsing remote code execution (October 2026; issue #104).**
+  Unauthenticated code execution in the PHP runtime while handling a web
+  request. Upstream fixed releases include PHP 8.4.27 on the 8.4 line
+  (8.5.12 is an alternative fixed line, not a requirement). Debian's
+  `php8.4` `8.4.27-1~deb13u1` carries that fix; the 2026-10-26 refresh of
+  `1.8.8-2` / `latest` ships it. Older immutable tags such as
+  `1.8.8-2-20261019` do not. Stay on Debian's PHP 8.4 packages; do not
+  replace them with a third-party PHP 8.5 build inside the container.
+
 ## Hardening in the 2026 refresh
 
 Each item was reproduced on the previous image or found while proving the

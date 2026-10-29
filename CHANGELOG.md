@@ -21,6 +21,9 @@ rebuilds the latest release.
 - The weekly rebuild really picks up Debian security updates again: the
   build cache had kept the package-upgrade step from the first build, so
   e.g. PHP 8.4 stayed at a version with a known fix available.
+- The 2026-10-26 refresh of this tag ships Debian's PHP 8.4.27 (fixes the
+  October 2026 PHP request-parsing RCE class; see `SECURITY.md`). Pull
+  `1.8.8-2` or `latest` again if you still run an older dated tag.
 
 ### Added
 
