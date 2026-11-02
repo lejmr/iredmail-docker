@@ -2,7 +2,7 @@
 # Shared shell library for entrypoint.sh, first-start.sh and the `admin`
 # CLI. Sourced, never executed directly.
 #
-# Schema/behaviour this was written against (iRedMail 1.8.8, MySQL/MariaDB
+# Schema/behaviour this was written against (iRedMail 1.8.8-1.8.9, MySQL/MariaDB
 # backend): iRedMail/samples/iredmail/iredmail.mysql (domain, mailbox,
 # forwardings, domain_admins tables), iRedMail/tools/create_mail_user_SQL.sh
 # (password hashing + hashed maildir layout), iRedMail/samples/amavisd/
