@@ -1,17 +1,17 @@
 # syntax=docker/dockerfile:1
 #
-# Phase A image: iRedMail 1.8.9 (open source edition) unattended-installed
+# Phase A image: iRedMail 1.8.10 (open source edition) unattended-installed
 # on debian:13-slim, driven entirely at `docker build` time. See
 # DEVELOPMENT.md for the overrides mechanism, the `admin` CLI contract, and
 # how this differs from the legacy CentOS/Rocky Dockerfiles this was
 # modelled on (mysql/Dockerfile, "Update to 1.6.1/Dockerfile").
 FROM debian:13-slim
 
-ARG IREDMAIL_VERSION=1.8.9
+ARG IREDMAIL_VERSION=1.8.10
 # sha256 of the archive/refs/tags/${IREDMAIL_VERSION}.tar.gz below - a git
 # tag is mutable (force-push/retag), unlike a checksum; bump both together
 # on a version bump (`curl -fsSL <url> | sha256sum`).
-ARG IREDMAIL_SHA256=bb79bfe97d93880b880376d0f3849eb50b79f50a7d8ad3286215ab4bb6a9dc69
+ARG IREDMAIL_SHA256=ee4156862d51c6548fa1efab8015ba1dff9d197520dd60d8f4b38fbb8d59d4d4
 ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -95,6 +95,12 @@ RUN set -eux; \
 # entirely and source ./config (dialog/config_via_dialog.sh, iRedMail.sh);
 # a temporary MariaDB instance must be running for the installer's SQL
 # schema import (functions/mysql.sh), same as the legacy mysql/Dockerfile.
+# CHECK_NEW_IREDMAIL=NO (pkgs/get_all.sh) skips the installer's online "is
+# there a newer iRedMail" check, which exits 255 once upstream releases
+# anything newer: every upstream release turned the weekly CI red and made
+# the released tag unbuildable for the security refresh (2026-11-02 and
+# 2026-11-16). The version stays pinned above; a newer upstream release is
+# reported by the weekly watchdog instead.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     set -eux; \
@@ -113,6 +119,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     AUTO_CLEANUP_RESTART_FIREWALL=n \
     AUTO_CLEANUP_REPLACE_MYSQL_CONFIG=y \
     AUTO_CLEANUP_RESTART_POSTFIX=n \
+    CHECK_NEW_IREDMAIL=NO \
     bash iRedMail.sh; \
     mysqladmin shutdown || true; \
     # Replace the build-time passwords iRedMail just baked into every

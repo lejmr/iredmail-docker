@@ -88,6 +88,22 @@ jobs:
             # Released code versus what is on master.
             rel=$(gh release list -R "$repo" --limit 1 --json tagName,publishedAt --jq '.[0] | "\(.tagName) (\(.publishedAt[0:10]))"')
             report "- latest release: ${rel:-none} | master: $head"
+
+            # A newer iRedMail upstream than the latest release. The build
+            # no longer fails on it (CHECK_NEW_IREDMAIL=NO), so this is
+            # where it surfaces. Tag names only, parsed as version numbers.
+            if [ "$repo" = "lejmr/iredmail-docker" ]; then
+              upstream=$(git ls-remote --tags --refs https://github.com/iredmail/iRedMail.git \
+                | sed -n 's#.*refs/tags/\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$#\1#p' | sort -V | tail -1)
+              ours="${rel%% *}"; ours="${ours%%-*}"
+              if [ -z "$upstream" ]; then
+                report "- iRedMail upstream: could not read tags"; attention=1
+              elif [ "$(printf '%s\n%s\n' "$ours" "$upstream" | sort -V | tail -1)" != "$ours" ]; then
+                report "- iRedMail upstream: $upstream is out (released image: $ours)"; attention=1
+              else
+                report "- iRedMail upstream: $upstream (up to date)"
+              fi
+            fi
             report ""
           done
 
