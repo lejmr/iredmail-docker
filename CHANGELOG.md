@@ -3,6 +3,23 @@
 Written for people running the image. The technical detail is in the pull
 requests linked from each release on GitHub.
 
+## [1.8.10]
+
+iRedMail 1.8.10. Existing data is used as is: nothing to migrate.
+
+### Security
+
+- Webmail (Roundcube) 1.7.6, which fixes 17 security vulnerabilities
+  (https://roundcube.net/news/2026/11/09/security-updates-1.6.21-and-1.7.6).
+
+### Changed
+
+- The image no longer builds from 1.8.9 (iRedMail's installer refuses to
+  run once a newer release exists), so `:1.8.9` stays published but is no
+  longer refreshed; switch to `:1.8.10` (or `latest`). From 1.8.10 on, a
+  new iRedMail release no longer stops the weekly security refresh of the
+  current tag.
+
 ## [1.8.9]
 
 iRedMail 1.8.9. Existing data is used as is: nothing to migrate.

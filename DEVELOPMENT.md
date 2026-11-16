@@ -272,8 +272,12 @@ its header); squash-only; the source must contain current `master`.
 
 - GitHub disables scheduled workflows after 60 days without activity;
   push anything to re-enable the weekly run before trusting its silence.
-- Check https://docs.iredmail.org/iredmail.releases.html and bump
-  `IREDMAIL_VERSION` + `IREDMAIL_SHA256` in `image/Dockerfile`; migrations
+- Check https://docs.iredmail.org/iredmail.releases.html (the weekly
+  watchdog reports a newer upstream tag as "iRedMail upstream") and bump
+  `IREDMAIL_VERSION` + `IREDMAIL_SHA256` in `image/Dockerfile`
+  (the checksum is `git archive --format=tar --prefix=iRedMail-<v>/ <v> |
+  gzip -cn | sha256sum` in a clone of iredmail/iRedMail, or `curl -fsSL
+  <url> | sha256sum`); migrations
   between versions are documented per release upstream and belong in
   `image/scripts/migrate.sh`.
 - `debian:13-slim` will be superseded; the Dockerfile's base tag and the
