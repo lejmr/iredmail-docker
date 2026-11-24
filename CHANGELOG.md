@@ -3,6 +3,20 @@
 Written for people running the image. The technical detail is in the pull
 requests linked from each release on GitHub.
 
+## [1.8.10-2]
+
+Same iRedMail 1.8.10, rebuilt with a fix for restarts. If you run `:1.8.10`,
+switch to `:1.8.10-2` (or `latest`): the weekly security refresh only
+rebuilds the latest release.
+
+### Fixed
+
+- In the first seconds after a restart of the container, sending mail from a
+  mail client could be refused with "451 queue file write error", and one
+  such early connection could leave sending stuck for a minute. The mail
+  server now opens its SMTP ports only once it can check passwords and
+  filter mail.
+
 ## [1.8.10]
 
 iRedMail 1.8.10. Existing data is used as is: nothing to migrate.

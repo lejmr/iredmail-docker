@@ -268,6 +268,12 @@ def test_row04_repeated_restarts_keep_login_and_sending_working(server_a, fresh_
         conn = _retry_imap_login(server_a, mail, password)
         conn.logout()
 
+        # IMAP answering says nothing about SMTP: the server opens the
+        # submission port once it can authenticate and filter what arrives.
+        # Wait for its greeting, not for the TCP connect - the published
+        # port accepts connections before anything answers behind it.
+        greeting = _smtp_banner(server_a.host, server_a.ports["submission"], 180)
+        assert greeting.startswith("220"), f"no SMTP greeting after restart {i}: {greeting!r}"
         smtp_send(server_a, admin_mail, mail, f"row04restarts-{i}-{time.time()}",
                   auth=(admin_mail, admin_pw))
 

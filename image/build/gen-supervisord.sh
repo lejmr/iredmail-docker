@@ -41,7 +41,27 @@ for svc in $SERVICES; do
         # mail system is started through systemd but not under systemd?").
         # `start-fg` is postfix's own supported foreground mode (postfix(1)),
         # not re-derived from the unit.
-        execstart="/usr/sbin/postfix start-fg"
+        #
+        # Postfix starts last of the three it depends on. supervisord starts
+        # everything at once, and Postfix answered on 25/465/587 seconds
+        # before the two services its smtpd talks to were there:
+        #   - Dovecot's auth socket (private/dovecot-auth; dovecot itself
+        #     waits for MariaDB, see below). An smtpd that cannot reach it
+        #     dies with "fatal: no SASL authentication mechanisms", and
+        #     Postfix's master then throttles that whole service for 60 s
+        #     ("bad command startup -- throttling"): one client connecting
+        #     to 587 in the first seconds after a restart left every client
+        #     hanging for a minute.
+        #   - Amavis on 10026, the before-queue filter of 465/587
+        #     (smtpd_proxy_filter, see the Dockerfile). While it is not
+        #     listening, every message is refused at the end of DATA with
+        #     "451 4.3.0 Error: queue file write error".
+        # The socket test is on the file: entrypoint.sh removes the one left
+        # by the previous run, so its presence means this run's dovecot made
+        # it. No cap on the loop, for dovecot's reason below: a Postfix that
+        # never starts keeps 25 closed and the container unhealthy, which is
+        # visible; a Postfix that starts anyway refuses mail while looking up.
+        execstart="/bin/bash -c 'until [ -S /var/spool/postfix/private/dovecot-auth ] && (exec 3<>/dev/tcp/127.0.0.1/10026) 2>/dev/null; do sleep 1; done; exec /usr/sbin/postfix start-fg'"
     elif [ "$svc" = "sogo" ]; then
         # ponytail: Debian's sogo package ships only /etc/init.d/sogo, no
         # systemd unit to read ExecStart= from - same DAEMON_OPTS as that

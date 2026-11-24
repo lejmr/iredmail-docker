@@ -76,4 +76,10 @@ postfix check || true
 # supervisord starts any daemon, so every PID file here is stale.
 find /run -name '*.pid' -type f -delete
 
+# Same leftover, Dovecot's sockets in Postfix's queue directory: they survive
+# a restart as files nobody listens on. Postfix waits for dovecot-auth to
+# appear before it starts (build/gen-supervisord.sh), which only means
+# something once the stale one is gone. Dovecot creates them again.
+rm -f /var/spool/postfix/private/dovecot-auth /var/spool/postfix/private/dovecot-lmtp
+
 exec "$@"
