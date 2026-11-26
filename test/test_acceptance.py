@@ -707,7 +707,8 @@ def test_row14_backup_restore(server_a, fresh_user):
             if r.returncode == 0:
                 break
             time.sleep(3)
-        assert r.returncode == 0, f"admin restore failed: {r.stderr.decode(errors='replace')}"
+        assert r.returncode == 0, (f"admin restore failed: {r.stderr.decode(errors='replace')}"
+                                   f"{_container_post_mortem('mail-c')}")
 
         # Same TCP-before-TLS-ready race documented elsewhere in this file
         # for dovecot right after a restart (row 4/13/19) - `admin restore`
@@ -731,6 +732,28 @@ def test_row14_backup_restore(server_a, fresh_user):
     finally:
         subprocess.run(["docker", "compose", *COMPOSE_ARGS, "--profile", "restore",
                          "rm", "-f", "-s", "mail-c"], capture_output=True, timeout=60)
+
+
+def _container_post_mortem(service):
+    """Why a container is gone, for a failure message only (never asserted
+    on): its state as Docker recorded it and the end of its output. Without
+    it, a container that exits is removed by the test's own cleanup and the
+    CI log shows nothing but "not running"."""
+    state = subprocess.run(
+        ["docker", "compose", *COMPOSE_ARGS, "--profile", "restore", "ps", "-a",
+         "--format", "{{.State}} {{.Status}}", service],
+        capture_output=True, timeout=30).stdout.decode(errors="replace").strip()
+    cid = subprocess.run(["docker", "compose", *COMPOSE_ARGS, "--profile", "restore",
+                          "ps", "-a", "-q", service],
+                         capture_output=True, timeout=30).stdout.decode().strip()
+    inspect = subprocess.run(
+        ["docker", "inspect", "-f",
+         "ExitCode={{.State.ExitCode}} OOMKilled={{.State.OOMKilled}} Error={{.State.Error}}", cid],
+        capture_output=True, timeout=30).stdout.decode(errors="replace").strip() if cid else ""
+    logs = subprocess.run(["docker", "compose", *COMPOSE_ARGS, "--profile", "restore",
+                           "logs", "--no-color", "--tail", "60", service],
+                          capture_output=True, timeout=60).stdout.decode(errors="replace")
+    return f"\n--- {service}: {state} {inspect}\n{logs}"
 
 
 def _insecure_ctx():
@@ -770,10 +793,16 @@ def test_row15_no_fixable_high_critical_cves():
     # cache. `--timeout` is set generously for the same cold-cache case
     # (CI's first run per cache-lifetime); a warm cache (this volume, or
     # actions/cache in CI) finishes in well under a minute.
+    #
+    # `--scanners vuln`: the row is about CVEs. Trivy's default also runs
+    # its secret scanner over every file of the ~1.9 GB image, which took
+    # 9 of the 10 minutes of a cold scan and pushed the release run's scan
+    # (no warm-up step before the suite) past the timeout above.
     r = subprocess.run([
         "docker", "run", "--rm", "-v", "/var/run/docker.sock:/var/run/docker.sock",
         "-v", "trivy-cache:/root/.cache/",
-        "aquasec/trivy:0.58.2", "image", "--ignore-unfixed", "--severity", "HIGH,CRITICAL",
+        "aquasec/trivy:0.58.2", "image", "--scanners", "vuln",
+        "--ignore-unfixed", "--severity", "HIGH,CRITICAL",
         "--exit-code", "1", "--timeout", "15m", "--quiet", image,
     ], capture_output=True, timeout=930)
     assert r.returncode == 0, (
