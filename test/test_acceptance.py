@@ -245,6 +245,7 @@ def test_row04_restart_does_not_change_password(server_a, fresh_user):
     subprocess.run(["docker", "compose", "-f", COMPOSE_FILE, "restart", server_a.compose_service],
                     check=True, timeout=300)
     _wait_port(server_a.host, server_a.ports["imaps"], 180)
+    _wait_healthy(server_a, 300)
 
     conn = _retry_imap_login(server_a, mail, password)
     conn.logout()
@@ -264,6 +265,10 @@ def test_row04_repeated_restarts_keep_login_and_sending_working(server_a, fresh_
         subprocess.run(["docker", "compose", "-f", COMPOSE_FILE, "restart", server_a.compose_service],
                         check=True, timeout=300)
         _wait_port(server_a.host, server_a.ports["imaps"], 180)
+        # "healthy" is the server's own promise that it is ready; sending is
+        # only owed after it. Waiting for the IMAP port alone sent mail while
+        # the spam/virus filter was still loading (451 on submission).
+        _wait_healthy(server_a, 300)
 
         conn = _retry_imap_login(server_a, mail, password)
         conn.logout()
@@ -294,6 +299,22 @@ def _wait_port(host, port, timeout):
         except OSError:
             time.sleep(2)
     raise TimeoutError(f"{host}:{port} did not come up within {timeout}s")
+
+
+def _wait_healthy(server, timeout):
+    """Wait until the server's container reports `healthy` again after a
+    restart. A server whose image has no HEALTHCHECK reports no status at
+    all; there is nothing to wait for then. An unhealthy one fails here,
+    with its status, instead of as a puzzling SMTP error later."""
+    deadline = time.monotonic() + timeout
+    status = ""
+    while time.monotonic() < deadline:
+        rows = [r for r in compose_ps() if r.get("Service") == server.compose_service]
+        status = rows[0].get("Health", "") if rows else "not running"
+        if status in ("healthy", ""):
+            return
+        time.sleep(3)
+    raise TimeoutError(f"{server.compose_service} not healthy within {timeout}s (last: {status!r})")
 
 
 # ------------------------------------------------------------------ row 5 --
@@ -381,9 +402,7 @@ def test_row05_quota_refuses_over_limit(server_a, fresh_user):
         except smtplib.SMTPServerDisconnected:
             # Not a rejection (no SMTP code) - a still-settling postfix
             # right after another test in the same suite run restarted the
-            # container (row 4's own restart test only waits for IMAPS,
-            # not submission, to come back - see test_row04_restart_...);
-            # transient, unrelated to quota - back off and retry.
+            # container; transient, unrelated to quota - back off and retry.
             time.sleep(3)
             continue
         used, limit = used_kb()

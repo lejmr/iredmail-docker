@@ -3,6 +3,28 @@
 Written for people running the image. The technical detail is in the pull
 requests linked from each release on GitHub.
 
+## [1.8.11]
+
+iRedMail 1.8.11. Existing data is used as is: nothing to migrate.
+
+### Security
+
+- Webmail (Roundcube) 1.7.7, which fixes 12 security vulnerabilities
+  (https://roundcube.net/news/2026/11/23/security-updates-1.6.22-and-1.7.7).
+
+### Fixed
+
+- Right after a (re)start, the container no longer reports `healthy`
+  before sending works: it now also waits for the spam/virus filter, which
+  until then made every sent message fail with "451 4.3.0 queue file write
+  error". Anything that waits for `healthy` (a deploy, a reverse proxy)
+  now gets a server that sends mail.
+
+### Changed
+
+- `:1.8.10` stays published but is no longer refreshed; switch to
+  `:1.8.11` (or `latest`).
+
 ## [1.8.10]
 
 iRedMail 1.8.10. Existing data is used as is: nothing to migrate.

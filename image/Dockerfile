@@ -7,11 +7,11 @@
 # modelled on (mysql/Dockerfile, "Update to 1.6.1/Dockerfile").
 FROM debian:13-slim
 
-ARG IREDMAIL_VERSION=1.8.10
+ARG IREDMAIL_VERSION=1.8.11
 # sha256 of the archive/refs/tags/${IREDMAIL_VERSION}.tar.gz below - a git
 # tag is mutable (force-push/retag), unlike a checksum; bump both together
 # on a version bump (`curl -fsSL <url> | sha256sum`).
-ARG IREDMAIL_SHA256=ee4156862d51c6548fa1efab8015ba1dff9d197520dd60d8f4b38fbb8d59d4d4
+ARG IREDMAIL_SHA256=2e98a8597205c9cbf7c7176f23acb871990b20373d832f7dbd7b5cbb1d6b11db
 ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
