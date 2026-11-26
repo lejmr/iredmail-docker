@@ -770,10 +770,16 @@ def test_row15_no_fixable_high_critical_cves():
     # cache. `--timeout` is set generously for the same cold-cache case
     # (CI's first run per cache-lifetime); a warm cache (this volume, or
     # actions/cache in CI) finishes in well under a minute.
+    #
+    # `--scanners vuln`: the row is about CVEs. Trivy's default also runs
+    # its secret scanner over every file of the ~1.9 GB image, which took
+    # 9 of the 10 minutes of a cold scan and pushed the release run's scan
+    # (no warm-up step before the suite) past the timeout above.
     r = subprocess.run([
         "docker", "run", "--rm", "-v", "/var/run/docker.sock:/var/run/docker.sock",
         "-v", "trivy-cache:/root/.cache/",
-        "aquasec/trivy:0.58.2", "image", "--ignore-unfixed", "--severity", "HIGH,CRITICAL",
+        "aquasec/trivy:0.58.2", "image", "--scanners", "vuln",
+        "--ignore-unfixed", "--severity", "HIGH,CRITICAL",
         "--exit-code", "1", "--timeout", "15m", "--quiet", image,
     ], capture_output=True, timeout=930)
     assert r.returncode == 0, (

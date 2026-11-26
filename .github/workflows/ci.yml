@@ -80,7 +80,7 @@ jobs:
         # vuln+Java DB from scratch.
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/ \
-            aquasec/trivy:0.58.2 image --ignore-unfixed --severity HIGH,CRITICAL \
+            aquasec/trivy:0.58.2 image --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL \
             --exit-code 0 --timeout 15m --format table iredmail-phase-a:dev | tee -a "$GITHUB_STEP_SUMMARY"
       - name: acceptance suite from a fresh compose up
         # row 16's port scan (nmap) and row 15's CVE scan (trivy) both run
